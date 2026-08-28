@@ -694,12 +694,18 @@ function DashboardContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'generate_pptx', slides: result.metadata?.slides || [], title: result.title, userId: authUser?.userId }),
       });
-      const data = await res.json();
-      downloadFile(data.xmlData, data.fileName, 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+      const blob = await res.blob();
+      const fileName = res.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'presentation.pptx';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      addNotification({ type: 'request_created', title: 'PPTX Downloaded', message: `${fileName} saved` });
     } catch (e) {
       addNotification({ type: 'approval_rejected', title: 'Download Failed', message: String(e) });
     }
-  }, [authUser, downloadFile, addNotification]);
+  }, [authUser, addNotification]);
 
   const handleDownloadSRT = useCallback(async (result: TransformationResult) => {
     try {
@@ -725,8 +731,9 @@ function DashboardContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'generate_infographic', title: parsed.title, sections: parsed.sections, colorScheme: parsed.layout?.colorScheme, userId: authUser?.userId }),
       });
-      const data = await res.json();
-      downloadFile(data.content, data.fileName, data.mimeType);
+      const svgText = await res.text();
+      downloadFile(svgText, 'infographic.svg', 'image/svg+xml');
+      addNotification({ type: 'request_created', title: 'SVG Downloaded', message: 'Infographic saved as SVG' });
     } catch (e) {
       addNotification({ type: 'approval_rejected', title: 'Download Failed', message: String(e) });
     }

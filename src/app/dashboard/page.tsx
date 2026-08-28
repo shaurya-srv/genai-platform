@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, Suspense } from "react";
 import { OutputPluginRegistry } from "@/lib/output-plugins";
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -296,7 +296,7 @@ function ApprovalActions({ requestId, outputType, onApprove, roles }: {
 }
 
 // ==================== MAIN DASHBOARD COMPONENT ====================
-export default function Dashboard() {
+function DashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -965,5 +965,20 @@ export default function Dashboard() {
         NTRO GenAI Platform • Blockchain & Cybersecurity • Smart India Hackathon 2.0
       </footer>
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-primary)" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⏳</div>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Loading dashboard...</div>
+        </div>
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }

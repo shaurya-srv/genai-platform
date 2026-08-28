@@ -10,8 +10,10 @@ import { AuditTracker } from "@/lib/audit-tracker";
 import { blockchain } from "@/lib/blockchain";
 import { PromptSanitizer } from "@/lib/prompt-guard";
 import { HashChain } from "@/lib/hashchain";
-import { generatePPTX, generateSRT, generateInfographicSVG, generateSTIXBundle } from "@/lib/file-generators";
+import { generateSRT, generateSTIXBundle } from "@/lib/file-generators";
 import { extractContext } from "@/lib/context-engine";
+import { generatePPTXFile } from "@/lib/pptx-generator";
+import { generateInfographicSVG } from "@/lib/infographic-generator";
 
 export async function POST(request: NextRequest) {
   try {
@@ -177,14 +179,26 @@ export async function POST(request: NextRequest) {
       // ==================== FILE DOWNLOAD ====================
       case "generate_pptx": {
         const { slides, title } = body;
-        const pptx = generatePPTX(slides || [], title || 'Presentation');
+        const pptxSlides = (slides || []).map((s: any, i: number) => ({
+          title: s.title || `Slide ${i + 1}`,
+          content: Array.isArray(s.content) ? s.content : (s.content || '').split('\n').filter((l: string) => l.trim()),
+          notes: s.notes || '',
+          layout: s.layout || (i === 0 ? 'title' : 'content'),
+        }));
+        const result = generatePPTXFile(pptxSlides, title || 'Presentation');
         HashChain.appendBlock({
           eventType: 'GENERATION',
           actorId: body.userId || 'system',
-          sourceContent: JSON.stringify(pptx),
-          metadata: { type: 'pptx', title, slideCount: pptx.totalSlides },
+          sourceContent: `PPTX: ${title} (${result.slideCount} slides)`,
+          metadata: { type: 'pptx', title, slideCount: result.slideCount },
         });
-        return NextResponse.json(pptx);
+        return new NextResponse(new Uint8Array(result.buffer), {
+          headers: {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'Content-Disposition': `attachment; filename="${result.fileName}"`,
+            'X-Slide-Count': String(result.slideCount),
+          },
+        });
       }
 
       case "generate_srt": {
@@ -200,15 +214,26 @@ export async function POST(request: NextRequest) {
       }
 
       case "generate_infographic": {
-        const { title: infTitle, sections, colorScheme } = body;
-        const svg = generateInfographicSVG({ title: infTitle || 'Infographic', sections: sections || [], colorScheme: colorScheme || { primary: '#1a1a2e', secondary: '#16213e', accent: '#e94560', text: '#ffffff', bg: '#0f3460' } });
+        const { title: infTitle, sections, colorScheme, subtitle, stats } = body;
+        const svg = generateInfographicSVG({
+          title: infTitle || 'Infographic',
+          subtitle: subtitle || 'NTRO GenAI Platform',
+          sections: sections || [],
+          colorScheme: colorScheme || undefined,
+          stats: stats || [],
+        });
         HashChain.appendBlock({
           eventType: 'GENERATION',
           actorId: body.userId || 'system',
-          sourceContent: svg,
-          metadata: { type: 'svg', title: infTitle },
+          sourceContent: `SVG: ${infTitle}`,
+          metadata: { type: 'svg', title: infTitle, sectionCount: (sections || []).length },
         });
-        return NextResponse.json({ content: svg, fileName: 'infographic.svg', mimeType: 'image/svg+xml' });
+        return new NextResponse(svg, {
+          headers: {
+            'Content-Type': 'image/svg+xml',
+            'Content-Disposition': 'attachment; filename="infographic.svg"',
+          },
+        });
       }
 
       case "generate_stix": {

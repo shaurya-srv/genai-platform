@@ -11,6 +11,7 @@ import { blockchain } from "@/lib/blockchain";
 import { PromptSanitizer } from "@/lib/prompt-guard";
 import { HashChain } from "@/lib/hashchain";
 import { generatePPTX, generateSRT, generateInfographicSVG, generateSTIXBundle } from "@/lib/file-generators";
+import { extractContext } from "@/lib/context-engine";
 
 export async function POST(request: NextRequest) {
   try {
@@ -166,7 +167,14 @@ export async function POST(request: NextRequest) {
         const { content, outputType, config } = body;
         const report = ImpactMetrics.generateReport("current", content, outputType, config);
         return NextResponse.json(report);
-      }      // ==================== FILE DOWNLOAD ====================
+      }      // ==================== CONTEXT EXTRACTION ====================
+      case "extract_context": {
+        const { content, targetAudience, tone } = body;
+        const context = await extractContext(content || '', { targetAudience, tone });
+        return NextResponse.json(context);
+      }
+
+      // ==================== FILE DOWNLOAD ====================
       case "generate_pptx": {
         const { slides, title } = body;
         const pptx = generatePPTX(slides || [], title || 'Presentation');

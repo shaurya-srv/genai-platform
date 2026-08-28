@@ -947,17 +947,450 @@ function DashboardContent() {
 
       {/* Main Content */}
       <main style={{ maxWidth: "1400px", margin: "0 auto", padding: "1.5rem 2rem" }}>
-        <div style={{ textAlign: "center", padding: "4rem 2rem" }}>
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🏗️</div>
-          <h2 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem", color: "var(--text-primary)" }}>Dashboard Active</h2>
-          <p style={{ color: "var(--text-muted)", maxWidth: "500px", margin: "0 auto" }}>
-            Logged in as <strong>{authUser?.displayName}</strong> with <strong>{portal}</strong> portal access.
-            The full dashboard content is being restored — all tabs and features are functional via the API endpoints.
-          </p>
-          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", marginTop: "1.5rem" }}>
-            <button className="btn-primary" onClick={() => router.push('/')}>← Back to Landing</button>
+
+        {/* ==================== INPUT TAB ==================== */}
+        {activeTab === 'input' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem' }} className="animate-slide-up">
+            {/* Left: Source Content */}
+            <div>
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h2 style={{ fontSize: '1.125rem', fontWeight: 700 }}>📝 Source Content</h2>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn-secondary" onClick={handleVoiceInput} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
+                      {voiceRecording ? '⏹️ Stop' : '🎤 Voice Input'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* File Upload Drop Zone */}
+                <div onDrop={handleDrop} onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onClick={() => fileInputRef.current?.click()} style={{ border: `2px dashed ${dragOver ? 'var(--accent-blue)' : 'var(--border-color)'}`, borderRadius: '10px', padding: '1.25rem', marginBottom: '1rem', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s ease', background: dragOver ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)' }}>
+                  <input ref={fileInputRef} type="file" accept=".txt,.md,.csv,.json,.pdf,.docx,.doc,.png,.jpg,.jpeg,.gif,.webp" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ''; }} style={{ display: 'none' }} />
+                  {uploadingFile ? (
+                    <div style={{ color: 'var(--accent-blue)', fontSize: '0.875rem' }}>⏳ Uploading and processing file...</div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>📎</div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.25rem' }}>Drop a file here or click to browse</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>PDF, DOCX, TXT, Markdown, CSV, JSON, PNG, JPEG, GIF, WebP</div>
+                    </>
+                  )}
+                </div>
+
+                {/* Upload result banner */}
+                {uploadResult && (
+                  <div style={{ padding: '0.6rem 1rem', marginBottom: '1rem', borderRadius: '8px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: uploadResult.safe ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.15)', border: `1px solid ${uploadResult.safe ? 'var(--accent-green)' : 'var(--accent-yellow)'}` }}>
+                    <span>{uploadResult.safe ? '✅' : '⚠️'}</span>
+                    <span style={{ flex: 1 }}>{uploadResult.safe ? 'File processed — content is safe' : `${uploadResult.threatsFound} threats detected (${uploadResult.riskLevel}). Content sanitized.`}</span>
+                    <button onClick={() => setUploadResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                  </div>
+                )}
+
+                {/* URL Ingestion */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <input className="input" placeholder="🌐 Or paste a URL to fetch content..." value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleUrlFetch(); }} style={{ flex: 1, fontSize: '0.85rem', padding: '0.6rem 0.75rem' }} />
+                  <button className="btn-secondary" onClick={handleUrlFetch} disabled={!urlInput.trim() || fetchingUrl} style={{ padding: '0.6rem 1rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{fetchingUrl ? '⏳' : '🌐 Fetch'}</button>
+                </div>
+
+                <textarea className="input" placeholder="Paste your source content here..." value={sourceContent} onChange={(e) => setSourceContent(e.target.value)} style={{ minHeight: '250px', lineHeight: 1.6 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                  <span>{sourceContent.split(/\s+/).filter(Boolean).length} words</span>
+                  <span>{sourceContent.length} characters</span>
+                </div>
+              </div>
+
+              {/* Configuration Options */}
+              <div className="card" style={{ marginTop: '1.5rem' }}>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1rem' }}>⚙️ Configuration</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label className="label">Target Audience</label>
+                    <input className="input" placeholder="e.g., CISOs, Technical Teams" value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label">Tone</label>
+                    <select className="input" value={tone} onChange={(e) => setTone(e.target.value)}>
+                      {TONE_OPTIONS.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Detail Level</label>
+                    <select className="input" value={detailLevel} onChange={(e) => setDetailLevel(e.target.value)}>
+                      {DETAIL_LEVELS.map((d) => (<option key={d.value} value={d.value}>{d.label}</option>))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Language</label>
+                    <select className="input" value={language} onChange={(e) => setLanguage(e.target.value)}>
+                      <option value="en">English</option>
+                      <option value="hi">Hindi</option>
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label className="label">Communication Objective</label>
+                    <input className="input" placeholder="e.g., Inform about security breach" value={communicationObjective} onChange={(e) => setCommunicationObjective(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Output Selection */}
+            <div>
+              <div className="card">
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1rem' }}>🎯 Select Output Types</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {OUTPUT_OPTIONS.map((opt) => (
+                    <button key={opt.id} onClick={() => toggleOutput(opt.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: selectedOutputs.includes(opt.id) ? `2px solid ${opt.color}` : '1px solid var(--border-color)', background: selectedOutputs.includes(opt.id) ? `${opt.color}15` : 'var(--bg-secondary)', cursor: 'pointer', transition: 'all 0.2s ease', textAlign: 'left' }}>
+                      <span style={{ fontSize: '1.25rem' }}>{opt.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.875rem', color: selectedOutputs.includes(opt.id) ? opt.color : 'var(--text-primary)' }}>{opt.name}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{opt.description}</div>
+                      </div>
+                      {selectedOutputs.includes(opt.id) && <span style={{ color: opt.color, fontSize: '1.125rem' }}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Transform Button */}
+              <div style={{ marginTop: '1.5rem' }}>
+                <button className="btn-primary" onClick={handleTransform} disabled={!sourceContent.trim() || selectedOutputs.length === 0 || isProcessing} style={{ width: '100%', padding: '1rem', fontSize: '1rem', borderRadius: '12px', opacity: !sourceContent.trim() || selectedOutputs.length === 0 ? 0.5 : 1 }}>
+                  {isProcessing ? processStage : `⚡ Transform to ${selectedOutputs.length} format(s)`}
+                </button>
+                {selectedOutputs.length > 0 && (
+                  <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.5rem' }}>{selectedOutputs.length} output(s) • Multi-sig approval required</p>
+                )}
+              </div>
+
+              {/* Security Pipeline Info */}
+              <div className="card" style={{ marginTop: '1rem' }}>
+                <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem' }}>🔐 Security Pipeline</h3>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <div>0. 🛡️ Prompt Injection Defense</div>
+                  <div>1. 🔍 DLP Scan</div>
+                  <div>2. 🛡️ Threat Analysis</div>
+                  <div>3. 📋 Compliance Check</div>
+                  <div>4. ⚡ Content Transformation</div>
+                  <div>5. ⛓️ Blockchain Record</div>
+                  <div>6. ✍️ Multi-Sig Approval</div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* ==================== RESULTS TAB ==================== */}
+        {activeTab === 'results' && (
+          <div className="animate-slide-up">
+            {results.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>No Results Yet</h3>
+                <p style={{ color: 'var(--text-muted)' }}>Go to Input tab and run a transformation.</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary Bar */}
+                <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                    <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Outputs</span><div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent-blue)' }}>{results.length}</div></div>
+                    <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Consistency</span><div style={{ fontSize: '1.5rem', fontWeight: 800, color: consistencyScore >= 70 ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>{consistencyScore}%</div></div>
+                  </div>
+                  <button className="btn-secondary" onClick={() => { navigator.clipboard.writeText(results.map((r, i) => `=== ${r.title} ===\n${editedContent[i] || r.content}`).join('\n\n')); }}>📋 Copy All</button>
+                </div>
+                {/* Results */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {results.map((result, idx) => {
+                    const opt = OUTPUT_OPTIONS.find(o => o.id === result.type);
+                    const isExpanded = expandedResult === idx;
+                    const isEditing = editingResult === idx;
+                    const status = resultApprovalStatus[idx] || 'draft';
+                    const statusColors: Record<string, string> = { draft: 'var(--accent-yellow)', edited: 'var(--accent-blue)', approved: 'var(--accent-green)' };
+                    return (
+                      <div key={idx} className="card" style={{ borderLeft: `4px solid ${status === 'approved' ? 'var(--accent-green)' : opt?.color || '#3b82f6'}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isEditing ? 'default' : 'pointer' }} onClick={() => !isEditing && setExpandedResult(isExpanded ? null : idx)}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <span style={{ fontSize: '1.5rem' }}>{opt?.icon}</span>
+                            <div>
+                              <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>{result.title}</h3>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{opt?.name} • {(result.content.length / 1024).toFixed(1)} KB</p>
+                                <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: `${statusColors[status]}20`, color: statusColors[status], fontWeight: 600 }}>{status === 'draft' ? '📝 Draft' : status === 'edited' ? '✏️ Edited' : '✅ Approved'}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            {status !== 'approved' && !isEditing && <button className="btn-secondary" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); startEditing(idx); }}>✏️ Edit</button>}
+                            {!isEditing && <button className="btn-secondary" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(editedContent[idx] || result.content); }}>📋 Copy</button>}
+                            {result.type === 'presentation' && <button className="btn-primary" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); handleDownloadPPTX(result); }}>📥 PPTX</button>}
+                            {result.type === 'video' && <button className="btn-primary" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); handleDownloadSRT(result); }}>📥 SRT</button>}
+                            {result.type === 'infographic' && <button className="btn-primary" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); handleDownloadSVG(result); }}>📥 SVG</button>}
+                            {result.type === 'advisory' && <button className="btn-primary" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); handleDownloadSTIX(result); }}>📥 STIX</button>}
+                            {isEditing && <><button className="btn-success" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); saveEdit(idx); }}>💾 Save</button><button className="btn-secondary" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); setEditingResult(null); }}>✕ Cancel</button></>}
+                            {status === 'edited' && !isEditing && <button className="btn-success" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); approveDraft(idx); }}>✅ Approve</button>}
+                            {status === 'approved' && !isEditing && <button className="btn-secondary" style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }} onClick={(e) => { e.stopPropagation(); rejectDraft(idx); }}>↩️ Revert</button>}
+                          </div>
+                        </div>
+                        {(isExpanded || isEditing) && (
+                          <div style={{ marginTop: '1rem' }} className="animate-slide-up">
+                            {isEditing ? (
+                              <>
+                                <textarea className="input" value={editedContent[idx] ?? result.content} onChange={(e) => setEditedContent(prev => ({ ...prev, [idx]: e.target.value }))} style={{ minHeight: '400px', lineHeight: 1.6, fontFamily: 'monospace', fontSize: '0.85rem' }} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem' }}>
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{(editedContent[idx] ?? result.content).length} chars</span>
+                                  <div style={{ display: 'flex', gap: '0.5rem' }}><button className="btn-secondary" onClick={() => setEditingResult(null)} style={{ fontSize: '0.75rem' }}>Cancel</button><button className="btn-success" onClick={() => approveDraft(idx)} style={{ fontSize: '0.75rem' }}>Save & Approve</button></div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="code-block" style={{ maxHeight: '500px', overflow: 'auto' }}>{editedContent[idx] || result.content}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ==================== SECURITY TAB ==================== */}
+        {activeTab === 'security' && (
+          <div className="animate-slide-up">
+            {!scanResults ? (
+              <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🛡️</div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 600 }}>No Security Scan Results</h3>
+                <p style={{ color: 'var(--text-muted)' }}>Run a transformation to see security analysis.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: promptScanResult ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr', gap: '1.5rem' }}>
+                <div className="card">
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>🔍 DLP Scanner <span className={scanResults.dlp.safe ? 'badge badge-safe' : 'badge badge-danger'}>{scanResults.dlp.safe ? '✓ SAFE' : '⚠ RISK'}</span></h3>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ marginBottom: '0.5rem' }}><span style={{ color: 'var(--text-muted)' }}>Risk: </span><span style={{ fontWeight: 600, color: scanResults.dlp.riskLevel === 'SAFE' ? 'var(--accent-green)' : 'var(--accent-red)' }}>{scanResults.dlp.riskLevel}</span></div>
+                    <div><span style={{ color: 'var(--text-muted)' }}>Patterns: </span><span style={{ fontWeight: 600 }}>{scanResults.dlp.patternsMatched}</span></div>
+                  </div>
+                </div>
+                <div className="card">
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>🛡️ Threat Analysis <span className={scanResults.threat.overallRiskScore < 20 ? 'badge badge-safe' : 'badge badge-warning'}>{scanResults.threat.overallRiskLevel}</span></h3>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ marginBottom: '0.5rem' }}><span style={{ color: 'var(--text-muted)' }}>Score: </span><span style={{ fontWeight: 600, color: scanResults.threat.overallRiskScore < 20 ? 'var(--accent-green)' : 'var(--accent-red)' }}>{scanResults.threat.overallRiskScore}/100</span></div>
+                    <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${scanResults.threat.overallRiskScore}%`, background: scanResults.threat.overallRiskScore < 20 ? 'var(--accent-green)' : 'var(--accent-red)' }} /></div>
+                  </div>
+                </div>
+                <div className="card">
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>📋 Compliance <span className={scanResults.compliance.compliant ? 'badge badge-safe' : 'badge badge-warning'}>{scanResults.compliance.compliant ? '✓ COMPLIANT' : '⚠ ISSUES'}</span></h3>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    <div><span style={{ color: 'var(--text-muted)' }}>Score: </span><span style={{ fontWeight: 700, color: scanResults.compliance.score >= 80 ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>{scanResults.compliance.score}/100</span></div>
+                  </div>
+                </div>
+                {promptScanResult && (
+                  <div className="card">
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>💉 Prompt Injection <span className={promptScanResult.safe ? 'badge badge-safe' : 'badge badge-danger'}>{promptScanResult.safe ? '✓ SAFE' : '⚠ THREATS'}</span></h3>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Threats: </span><span style={{ fontWeight: 600 }}>{promptScanResult.threatsFound}</span></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ==================== APPROVAL TAB ==================== */}
+        {activeTab === 'approval' && (
+          <div className="animate-slide-up">
+            {approvalRequests.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✍️</div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 600 }}>No Pending Approvals</h3>
+                <p style={{ color: 'var(--text-muted)' }}>Run a transformation to generate approval requests.</p>
+              </div>
+            ) : (
+              <>
+                <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
+                    <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Total</span><div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent-blue)' }}>{approvalRequests.length}</div></div>
+                    <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Pending</span><div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent-yellow)' }}>{approvalRequests.filter(r => r.status === 'PENDING').length}</div></div>
+                    <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Approved</span><div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent-green)' }}>{approvalRequests.filter(r => r.status === 'APPROVED').length}</div></div>
+                  </div>
+                  {approvalRequests.every(r => r.status === 'APPROVED') && <button className="btn-primary" onClick={handlePublish} disabled={publishing} style={{ padding: '0.75rem 2rem' }}>{publishing ? '⏳' : '🚀 Publish All'}</button>}
+                </div>
+                {approvalRequests.map((req) => {
+                  const opt = OUTPUT_OPTIONS.find(o => o.id === req.metadata.outputType);
+                  const progress = req.requiredApprovals > 0 ? (req.currentApprovals / req.requiredApprovals) * 100 : 0;
+                  return (
+                    <div key={req.id} className="card" style={{ marginBottom: '1rem', borderLeft: `4px solid ${req.status === 'APPROVED' ? 'var(--accent-green)' : req.status === 'REJECTED' ? 'var(--accent-red)' : opt?.color || 'var(--accent-blue)'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <span style={{ fontSize: '1.5rem' }}>{opt?.icon || '📄'}</span>
+                          <div>
+                            <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>{opt?.name || req.metadata.outputType}</h3>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Threat: {req.metadata.threatLevel} • DLP: {req.metadata.dlpSafe ? '✓' : '⚠'}</p>
+                          </div>
+                        </div>
+                        <span className={`badge ${req.status === 'APPROVED' ? 'badge-safe' : req.status === 'REJECTED' ? 'badge-danger' : 'badge-warning'}`}>{req.status === 'APPROVED' ? '✅ APPROVED' : req.status === 'REJECTED' ? '❌ REJECTED' : '⏳ PENDING'}</span>
+                      </div>
+                      <div className="progress-bar" style={{ marginBottom: '0.75rem' }}><div className="progress-bar-fill" style={{ width: `${progress}%`, background: req.status === 'APPROVED' ? 'var(--accent-green)' : 'var(--accent-blue)' }} /></div>
+                      {req.approvals.length > 0 && (
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          {req.approvals.map((a) => (
+                            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.6rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.75rem', marginBottom: '0.3rem' }}>
+                              <span>{a.decision === 'APPROVE' ? '✅' : '❌'}</span>
+                              <span style={{ fontWeight: 600 }}>{a.approverName}</span>
+                              <span className="badge badge-info" style={{ fontSize: '0.55rem' }}>{a.role}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>{new Date(a.timestamp).toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {req.status === 'PENDING' && canApprove && (
+                        <ApprovalActions requestId={req.id} outputType={req.metadata.outputType} onApprove={handleApproval} roles={approvalRoles} />
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ==================== BLOCKCHAIN TAB ==================== */}
+        {activeTab === 'blockchain' && (
+          <div className="animate-slide-up">
+            <div className="card">
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>⛓️ Blockchain Verification</h3>
+              {blockchainId ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Transformation ID</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all', color: 'var(--accent-purple)' }}>{blockchainId}</div>
+                  </div>
+                  <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Status</div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}><span className="badge badge-safe">✓ Recorded</span><span className="badge badge-purple">⛓️ On-Chain</span></div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No blockchain records yet.</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== AUDIT TAB ==================== */}
+        {activeTab === 'audit' && (
+          <div className="animate-slide-up">
+            <div className="card">
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>📋 Audit Trail</h3>
+              {blockchainId ? (
+                <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                    {[{ label: 'Events', value: '6+', color: 'var(--accent-blue)' }, { label: 'DLP Scans', value: '1', color: 'var(--accent-green)' }, { label: 'Approvals', value: String(approvalRequests.reduce((s, r) => s + r.approvals.length, 0)), color: 'var(--accent-yellow)' }, { label: 'Alerts', value: String(scanResults?.threat.threats.length || 0), color: 'var(--accent-red)' }].map((s, i) => (
+                      <div key={i} style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px', textAlign: 'center' }}><div style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color }}>{s.value}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.label}</div></div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No audit records yet.</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== RBAC TAB ==================== */}
+        {activeTab === 'rbac' && (
+          <div className="animate-slide-up">
+            <div className="card">
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1rem' }}>🔐 Access Control</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                <div>
+                  <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem' }}>Roles</h4>
+                  {rbacRoles.map(role => (
+                    <div key={role.id} style={{ padding: '0.6rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px', borderLeft: `3px solid ${role.color}`, marginBottom: '0.5rem' }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>{role.icon} {role.name}</div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{role.description}</div>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem' }}>Assignments</h4>
+                  {rbacAssignments.map(a => (
+                    <div key={a.userId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px', marginBottom: '0.5rem', opacity: a.active ? 1 : 0.5 }}>
+                      <div><span style={{ fontWeight: 600, fontSize: '0.8rem' }}>{a.userName}</span><span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{a.userId}</span></div>
+                      <span className="badge badge-info" style={{ fontSize: '0.6rem' }}>{a.role}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== HASH CHAIN TAB ==================== */}
+        {activeTab === 'hashchain' && (
+          <div className="animate-slide-up">
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>🔗 Hash-Chain Ledger</h3>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button className="btn-secondary" onClick={loadChainBlocks} style={{ fontSize: '0.8rem' }}>🔄 Refresh</button>
+                  <button className="btn-primary" onClick={verifyChain} style={{ fontSize: '0.8rem' }}>🔍 Verify Chain</button>
+                </div>
+              </div>
+              {chainVerification && (
+                <div style={{ padding: '1rem', marginBottom: '1.5rem', borderRadius: '10px', background: chainVerification.valid ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${chainVerification.valid ? 'var(--accent-green)' : 'var(--accent-red)'}` }}>
+                  <div style={{ fontWeight: 700, color: chainVerification.valid ? 'var(--accent-green)' : 'var(--accent-red)' }}>{chainVerification.valid ? '✅ Chain Integrity Verified' : '🚨 CHAIN BROKEN'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{chainVerification.details}</div>
+                </div>
+              )}
+              {chainBlocks.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No blocks in chain yet.</div>
+              ) : (
+                <div style={{ position: 'relative', paddingLeft: '2.5rem' }}>
+                  <div style={{ position: 'absolute', left: '12px', top: 0, bottom: 0, width: '3px', background: 'linear-gradient(180deg, var(--accent-blue), var(--accent-purple))', borderRadius: '2px' }} />
+                  {chainBlocks.slice(0, 20).map((block) => (
+                    <div key={block.blockId} style={{ position: 'relative', padding: '0.6rem 0.9rem', marginBottom: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '8px', borderLeft: '3px solid var(--accent-blue)' }}>
+                      <div style={{ position: 'absolute', left: '-27px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', borderRadius: '50%', background: 'var(--accent-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', border: '2px solid var(--bg-primary)' }}>⛓</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div><span style={{ fontWeight: 600, fontSize: '0.8rem' }}>{block.eventType.replace(/_/g, ' ')}</span><span className="badge badge-info" style={{ fontSize: '0.55rem', marginLeft: '0.5rem' }}>#{block.blockNumber}</span><span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>by {block.actorName}</span></div>
+                        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{new Date(block.timestamp).toLocaleString()}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.2rem' }}>
+                        <code style={{ fontSize: '0.5rem', color: 'var(--accent-blue)', background: 'rgba(59,130,246,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>hash: {block.contentHash.substring(0, 12)}...</code>
+                        <code style={{ fontSize: '0.5rem', color: 'var(--accent-purple)', background: 'rgba(139,92,246,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>prev: {block.prevHash.substring(0, 12)}...</code>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== PLUGINS TAB ==================== */}
+        {activeTab === 'plugins' && (
+          <div className="animate-slide-up">
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1rem' }}>🧩 Output Plugins</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1rem' }}>
+                {OUTPUT_OPTIONS.map(opt => (
+                  <div key={opt.id} className="card" style={{ borderLeft: `4px solid ${opt.color}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: '2rem' }}>{opt.icon}</span>
+                      <div>
+                        <h4 style={{ fontWeight: 700, fontSize: '0.9rem' }}>{opt.name}</h4>
+                        <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>{opt.description}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Footer */}

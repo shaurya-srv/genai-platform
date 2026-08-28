@@ -1,443 +1,468 @@
-# 🛡️ Freebuff | GenAI Content Transformation Platform
+# 🛡️ NTRO | GenAI Content Transformation Platform
 
-> **AI-powered content transformation engine with blockchain verification, DLP scanning, multi-signature approval, and compliance checking.**
+> **AI-powered content transformation engine with blockchain verification, 4-portal RBAC auth, TOTP MFA, DLP scanning, multi-signature approval, and SIEM integration.**
 
-![Platform](https://img.shields.io/badge/Platform-Next.js-black?style=flat-square)
-![Blockchain](https://img.shields.io/badge/Blockchain-Ethereum-blue?style=flat-square)
-![Security](https://img.shields.io/badge/Security-DLP%20%2B%20Threat%20Analysis-green?style=flat-square)
-![Compliance](https://img.shields.io/badge/Compliance-DPDP%20%2B%20IT%20Act%20%2B%20GDPR-orange?style=flat-square)
+![Platform](https://img.shields.io/badge/Platform-Next.js_16-black?style=flat-square)
+![Auth](https://img.shields.io/badge/Auth-JWT%20%2B%20Google%20OAuth%20%2B%20TOTP-green?style=flat-square)
+![Blockchain](https://img.shields.io/badge/Blockchain-Hash--Chain-blue?style=flat-square)
+![Security](https://img.shields.io/badge/Security-DLP%20%2B%20Threat%20%2B%20Prompt%20Injection-orange?style=flat-square)
 
 ---
 
 ## 📋 Table of Contents
 
 - [Overview](#overview)
-- [Key Features](#key-features)
+- [Quick Start](#quick-start)
+- [Environment Variables](#environment-variables)
 - [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Setup Instructions](#setup-instructions)
-- [API Reference](#api-reference)
-- [Output Formats](#output-formats)
+- [Authentication & Portals](#authentication--portals)
+- [Output Plugins](#output-plugins)
 - [Security Pipeline](#security-pipeline)
-- [Blockchain Integration](#blockchain-integration)
-- [Usage Examples](#usage-examples)
+- [Blockchain & Hash Chain](#blockchain--hash-chain)
+- [API Reference](#api-reference)
+- [File Downloads](#file-downloads)
+- [SIEM Integration](#siem-integration)
+- [Development](#development)
 
 ---
 
 ## 🎯 Overview
 
-Freebuff is an intelligent platform that transforms source content into various communication deliverables through a configurable interface. Designed for organizations like NTRO that handle sensitive data requiring secure, auditable content transformation.
+NTRO GenAI Platform transforms source content into multiple communication formats (LinkedIn, Twitter, Advisory, Presentation, Infographic, Video, Executive Summary, Crisis Response) with enterprise-grade security:
 
-### Problem It Solves
-- Manual content transformation is time-consuming and error-prone
-- No centralized tracking of who accessed what content
-- Risk of sensitive data leaks during transformation
-- Need for multi-party approval before publishing
-
-### Solution
-An AI-powered platform that automates content transformation while ensuring security through blockchain verification, DLP scanning, compliance checking, and multi-signature approval workflows.
+- **4-portal RBAC** — Operator, Approver, Admin, Auditor with separate JWT scopes
+- **Google OAuth + TOTP MFA** — Two-factor authentication with QR code enrollment
+- **Role levels** — Executive, Manager, Lead, Employee, Contractor, Intern
+- **Hash-chain ledger** — SHA-256 prev_hash linking with per-user RSA keypair signatures
+- **Separation of duties** — Submitters cannot approve their own content
+- **Plugin architecture** — Add new output types without rewriting core engine
+- **SIEM export** — CEF, JSON, CSV, Syslog formats for ArcSight, QRadar, Splunk, Elasticsearch
 
 ---
 
-## ✨ Key Features
+## 🚀 Quick Start
 
-### Content Transformation
-| Output Type | Description |
-|-------------|-------------|
-| 🎬 **Video Package** | Complete video script, storyboard, scene descriptions, narration, subtitles, visual recommendations |
-| 💼 **LinkedIn Post** | Professional post with hashtags, engagement tips, and audience targeting |
-| 🐦 **Twitter/X Post** | Platform-optimized tweets and tweet threads |
-| 📋 **Advisory** | Structured security advisory document |
-| 📊 **Infographic** | Infographic content, layout recommendations, key messaging |
-| 👔 **Executive Summary** | Concise executive briefing |
-| 📽️ **Presentation** | Presentation slides with speaker notes |
-| 🚨 **Crisis Response** | Crisis communication workflow automation |
+### Prerequisites
+- **Node.js 18+** (recommended: v20.x)
+- **npm 10+**
+- **Git**
 
-### Security & Compliance
-- 🔍 **DLP Scanner** - Detects PII, credentials, classified data, financial info
-- 🛡️ **Threat Analysis** - Identifies phishing, data exfiltration, insider threats
-- 📋 **Compliance Checker** - Validates against IT Act 2000, DPDP Act 2023, GDPR, SOC2, ISO 27001
-- ⛓️ **Blockchain Verification** - Immutable transformation records on Ethereum
-- ✍️ **Multi-Signature Approval** - Role-based sign-off workflow
-- 📊 **Audit Trail** - Complete centralized tracking of all activities
-- 🎤 **Voice Input** - Speak content instead of typing
-- 🌐 **Translation** - Multi-language transformation (24+ languages)
-- 📈 **Impact Metrics** - Measure communication effectiveness
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/shaurya-srv/genai-platform.git
+cd genai-platform
+npm install
+```
+
+### 2. Set Up Environment Variables
+
+```bash
+cp .env.example .env.local
+# Edit .env.local with your values (see Environment Variables section below)
+```
+
+### 3. Run Development Server
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) — you'll see the landing page.
+
+### 4. Login
+
+| Portal | URL | Username | Password |
+|--------|-----|----------|----------|
+| Operator | `/login?portal=operator` | `operator` | `operator123` |
+| Approver | `/login?portal=approver` | `approver` | `approver123` |
+| Admin | `/login?portal=admin` | `admin` | `admin123` |
+| Auditor | `/login?portal=auditor` | `auditor` | `auditor123` |
+
+Or click **"Sign in with Google"** on the login page (works in demo mode).
+
+### 5. Production Build
+
+```bash
+npm run build
+npm run start
+```
+
+---
+
+## 🔑 Environment Variables
+
+Create a `.env.local` file in the project root:
+
+```env
+# ==================== AUTH ====================
+# JWT signing secret (auto-generated if not set)
+JWT_SECRET=your-secret-key-here
+
+# ==================== GOOGLE OAUTH ====================
+# Get these from https://console.cloud.google.com/apis/credentials
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+
+# ==================== BLOCKCHAIN (Optional) ====================
+# Ethereum RPC URL for production on-chain recording
+ETHEREUM_RPC_URL=https://mainnet.infura.io/v3/YOUR_KEY
+CONTRACT_ADDRESS=0x...
+
+# ==================== AI SERVICES (Optional) ====================
+# For real LLM-powered transformations (currently uses rule-based transforms)
+OPENAI_API_KEY=sk-...
+```
+
+### Variable Descriptions
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `JWT_SECRET` | No | Auto-generated | Secret key for JWT token signing |
+| `GOOGLE_CLIENT_ID` | No | Demo mode | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | No | Demo mode | Google OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | No | `http://localhost:3000/api/auth/google/callback` | OAuth callback URL |
+| `ETHEREUM_RPC_URL` | No | Simulated | Ethereum RPC endpoint |
+| `CONTRACT_ADDRESS` | No | None | Deployed smart contract address |
+| `OPENAI_API_KEY` | No | Rule-based | OpenAI API key for LLM transforms |
+
+> **Note:** The platform works fully without any environment variables. Google OAuth falls back to demo mode, and blockchain uses in-memory simulation.
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    USER INTERFACE (Next.js)                  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │
-│  │  Input   │ │ Results  │ │ Security │ │  Blockchain  │  │
-│  │ Dashboard│ │  Panel   │ │  Panel   │ │  Verification│  │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └──────┬───────┘  │
-└───────┼──────────────┼──────────────┼──────────────┼─────────┘
-        │              │              │              │
-   ┌────▼──────────────▼──────────────▼──────────────▼────────┐
-   │                 API LAYER (Next.js Routes)                │
-   │  /api/transform  /api/blockchain  /api/audit  /api/approval│
-   └────┬──────────────┬──────────────┬──────────────┬────────┘
-        │              │              │              │
-   ┌────▼────┐  ┌──────▼──────┐  ┌───▼────┐  ┌─────▼──────┐
-   │Content  │  │  Security   │  │Blockchain│  │ Multi-Sig  │
-   │Transform│  │  Pipeline   │  │  Engine  │  │  Approval  │
-   │ Engine  │  │             │  │         │  │  Workflow  │
-   └─────────┘  │• DLP Scan   │  │• Record │  │            │
-                │• Threat     │  │• Verify │  │• Request   │
-                │  Analysis   │  │• Audit  │  │• Vote      │
-                │• Compliance │  │• Publish│  │• Approve   │
-                └─────────────┘  └─────────┘  └────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     LANDING PAGE (/)                             │
+│              Project overview + portal access                    │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                    LOGIN (/login)                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ Google OAuth  │  │  Username +  │  │  TOTP MFA (QR Code)  │  │
+│  │    Button     │  │   Password   │  │  Google Authenticator│  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ JWT (role + permissions encoded)
+┌──────────────────────────▼──────────────────────────────────────┐
+│                   DASHBOARD (/dashboard)                         │
+│                                                                  │
+│  OPERATOR          APPROVER          ADMIN           AUDITOR     │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐  │
+│  │ 📝 Input │    │ 📊 Results│   │ 📝 Input │    │ 🔗 Chain │  │
+│  │ 📊 Result│    │ 🛡️ Security│  │ 🔐 RBAC  │    │ 📋 Audit │  │
+│  │ 🛡️ Secur │    │ ⛓️ Blockch │ │ 🧩 Plugins│   │ ⛓️ Block │  │
+│  │ ⛓️ Block │    │ 📋 Audit  │    │ 📋 Audit │    └──────────┘  │
+│  │ ✍️ Apprvl│    │ ✍️ Apprvl │    │ 🔗 Chain │                  │
+│  └──────────┘    └──────────┘    │ ✍️ Apprvl │                  │
+│                                   └──────────┘                  │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                    API LAYER (9 endpoints)                       │
+│  /api/auth  /api/transform  /api/blockchain  /api/approval      │
+│  /api/upload  /api/hashchain  /api/rbac  /api/audit  /api/plugins│
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                    SERVICE LAYER                                 │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌────────────────┐  │
+│  │Auth (JWT+ │ │ Transform │ │ HashChain │ │  Multi-Sig     │  │
+│  │ Google +  │ │ Engine +  │ │ SHA-256   │ │  Approval      │  │
+│  │ TOTP MFA) │ │ 8 Plugins │ │ prev_hash │ │  + Deadlines   │  │
+│  └───────────┘ └───────────┘ └───────────┘ └────────────────┘  │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌────────────────┐  │
+│  │  RBAC     │ │ DLP +     │ │ SIEM      │ │  File Gen      │  │
+│  │  11 Roles │ │ Threat +  │ │ Export    │ │  PPTX SRT SVG  │  │
+│  │  20 Perms │ │ Compliance│ │ CEF/JSON  │ │  STIX/TAXII    │  │
+│  └───────────┘ └───────────┘ └───────────┘ └────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## 🔐 Authentication & Portals
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
-| Backend | Next.js API Routes, Node.js |
-| Blockchain | Ethereum (Solidity Smart Contracts), Ethers.js |
-| Security | Custom DLP Scanner, Threat Analyzer, Compliance Checker |
-| Styling | Custom CSS (Dark Cybersecurity Theme) |
+### 4 Portal Roles
 
----
+| Portal | Permissions | Cannot Do |
+|--------|-------------|-----------|
+| **Operator** 📝 | Submit content, select outputs, edit drafts | Approve, publish, manage users |
+| **Approver** ✍️ | Review, approve/reject, add comments, publish | Submit new content |
+| **Admin** 🖥️ | Manage users, roles, audit, plugins, config | Sign approvals (separation of duties) |
+| **Auditor** 🔍 | Read-only: view chain, verify, export logs | Submit, edit, approve, modify anything |
 
-## 🚀 Setup Instructions
+### Authentication Methods
 
-### Prerequisites
-- Node.js 18+ (recommended: v20.x)
-- npm 10+
-- Git
+1. **Google OAuth** — Click "Sign in with Google" → redirects to Google → returns with user profile
+2. **Username + Password** — Traditional credential login
+3. **TOTP MFA** — After password, enter 6-digit code from Google Authenticator
 
-### Installation
+### Role Levels
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/your-org/genai-platform.git
-cd genai-platform
+| Level | Access | Icon |
+|-------|--------|------|
+| Executive | Full system access | 👔 |
+| Manager | Approve, manage, audit | 📋 |
+| Team Lead | Approve, review | ⭐ |
+| Employee | Submit, edit, view | 👤 |
+| Contractor | Submit, limited view | 🤝 |
+| Intern | Read-only | 🎓 |
 
-# 2. Install dependencies
-npm install
+### Separation of Duties
 
-# 3. Start development server
-npm run dev
-```
-
-### Development Server
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Production Build
-```bash
-# Build for production
-npm run build
-
-# Start production server
-npm run start
-```
-
-### Environment Variables (Optional)
-Create a `.env.local` file:
-```env
-# Ethereum RPC URL (for production blockchain integration)
-ETHEREUM_RPC_URL=https://mainnet.infura.io/v3/YOUR_KEY
-
-# Smart Contract Address (deployed contract)
-CONTRACT_ADDRESS=0x...
-
-# API Keys (for translation, AI services)
-OPENAI_API_KEY=sk-...
-GOOGLE_TRANSLATE_KEY=...
-```
+The system enforces that **a submitter cannot approve their own content**. If user A submits content, user A cannot also approve it — a different approver identity is required. Violations are recorded on the hash chain.
 
 ---
 
-## 📡 API Reference
+## 🧩 Output Plugins
 
-### POST `/api/transform`
-Content transformation and security scanning.
+Each output type is a self-contained plugin with its own transform function and metadata.
 
-**Actions:**
-- `dlp_scan` - Scan content for sensitive data
-- `threat_analysis` - Analyze content for security threats
-- `compliance_check` - Check regulatory compliance
-- `transform` - Transform content to selected formats
-- `translate` - Translate content to target language
-- `impact_metrics` - Generate impact metrics
+| Plugin | Category | Icon | Description |
+|--------|----------|------|-------------|
+| Video Package | media | 🎬 | Script, storyboard, subtitles, narration |
+| LinkedIn Post | social | 💼 | Professional post with hashtags |
+| Twitter/X Post | social | 🐦 | Platform-optimized tweets/threads |
+| Advisory | document | 📋 | Structured security advisory |
+| Infographic | media | 📊 | Layout JSON + SVG visual |
+| Executive Summary | document | 👔 | Concise executive briefing |
+| Presentation | document | 📽️ | Slides with speaker notes |
+| Crisis Response | crisis | 🚨 | Crisis communication workflow |
 
-**Example:**
-```json
-POST /api/transform
-{
-  "action": "transform",
-  "content": "Your source content here...",
-  "config": {
-    "outputTypes": ["linkedin", "twitter", "presentation"],
-    "targetAudience": "CISOs",
-    "tone": "formal",
-    "language": "en",
-    "detailLevel": "standard"
-  }
-}
+### Adding a New Plugin
+
+```typescript
+// In src/lib/output-plugins.ts — just register, no core changes needed
+OutputPluginRegistry.register({
+  id: 'email_campaign',
+  name: 'Email Campaign',
+  icon: '📧',
+  description: 'HTML email newsletter',
+  color: '#f97316',
+  category: 'document',
+  enabled: true,
+  transform: (source, config) => ({
+    type: 'email_campaign' as any,
+    title: `Email: ${source.substring(0, 60)}`,
+    content: generateEmailHTML(source, config),
+    metadata: { format: 'HTML Email' },
+  }),
+});
 ```
-
-### POST `/api/blockchain`
-Blockchain operations.
-
-**Actions:**
-- `record` - Record transformation on-chain
-- `verify` - Verify transformation authenticity
-- `add_badge` - Add compliance badge
-- `approval` - Record approval vote
-- `publish` - Mark output as published
-
-### GET `/api/audit`
-Audit trail and compliance reporting.
-
-**Actions:**
-- `all` - Get all audit records
-- `stats` - Get statistics
-- `target` - Get records for target
-- `high-risk` - Get high-risk records
-- `alerts` - Get active alerts
-- `compliance-report` - Generate compliance report
-
-### POST `/api/approval`
-Multi-signature approval workflow.
-
-**Actions:**
-- `create` - Create approval request
-- `approve` - Submit approval vote
-
----
-
-## 📤 Output Formats
-
-### 🎬 Video Package
-Generates:
-- Complete video script with scene breakdowns
-- Storyboard descriptions
-- Narration text
-- Subtitles with timecodes
-- Visual recommendations
-
-### 💼 LinkedIn Post
-Generates:
-- Professional post content
-- Relevant hashtags
-- Engagement tips
-- Best posting times
-
-### 🐦 Twitter/X Thread
-Generates:
-- Thread-optimized tweets
-- Character count management
-- Hashtag suggestions
-- Engagement strategies
-
-### 📋 Advisory
-Generates:
-- Structured advisory document
-- Executive summary
-- Key findings
-- Impact assessment
-- Recommended actions
-
-### 📊 Infographic
-Generates:
-- Layout recommendations
-- Section-by-section content
-- Color scheme suggestions
-- Data visualization tips
-
-### 👔 Executive Summary
-Generates:
-- Concise briefing format
-- Key findings
-- Recommendations
-- Impact analysis
-
-### 📽️ Presentation
-Generates:
-- Slide-by-slide content
-- Speaker notes
-- Design guide
-- Layout recommendations
-
-### 🚨 Crisis Response
-Generates:
-- Situation overview
-- Stakeholder notification matrix
-- Escalation matrix
-- Media talking points
-- Communication templates
 
 ---
 
 ## 🔒 Security Pipeline
 
-Every content transformation goes through a 6-stage security pipeline:
+Every transformation goes through 7 stages:
 
 ```
-┌─────────┐    ┌─────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│  DLP    │───▶│ Threat  │───▶│Compliance│───▶│Content   │───▶│Blockchain│───▶│Multi-Sig │
-│ Scanner │    │Analysis │    │ Checker  │    │Transform │    │ Record   │    │ Approval │
-└─────────┘    └─────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
-  Detect         Identify       Validate        Generate        Immutable      Require
-  sensitive      security       regulatory      output          verification   authorized
-  data           threats        compliance      formats         on-chain       sign-off
+Stage 0: 🛡️ Prompt Injection Defense — Sanitize inputs
+Stage 1: 🔍 DLP Scan — Detect PII, credentials, classified data
+Stage 2: 🛡️ Threat Analysis — Identify phishing, exfiltration, insider threats
+Stage 3: 📋 Compliance Check — Validate IT Act, DPDP, GDPR, SOC2, ISO 27001
+Stage 4: ⚡ Content Transformation — Generate all selected outputs
+Stage 5: ⛓️ Hash-Chain Record — Immutable blockchain entry
+Stage 6: ✍️ Multi-Signature Approval — Role-based sign-off before publication
 ```
 
-### DLP Scanner Detects:
-- 🔴 Aadhaar Numbers, PAN Numbers
-- 🔴 Credit Card Numbers, Bank Accounts
-- 🔴 Passwords, API Keys, Private Keys
-- 🟡 Email Addresses, Phone Numbers
-- 🟡 Internal URLs, IP Addresses
-- 🟡 TOP SECRET, SECRET, RESTRICTED classifications
+### DLP Scanner Detects
+- 🔴 Aadhaar Numbers, PAN Numbers, Credit Cards
+- 🔴 Passwords, API Keys, Private Keys, SSH Keys
+- 🟡 Email Addresses, Phone Numbers, IP Addresses
+- 🟡 Internal URLs, File Paths, Database Connection Strings
 
-### Threat Analysis Detects:
-- Phishing language patterns
-- Data exfiltration indicators
-- Privileged access abuse
-- Social engineering tactics
-- Compliance risks
-- Reputational risks
-
-### Compliance Frameworks:
-- 🇮🇳 IT Act 2000 (India)
-- 🛡️ DPDP Act 2023 (Digital Personal Data Protection)
-- 🇪🇺 GDPR (EU General Data Protection)
-- 🔒 SOC 2 Trust Service Criteria
-- 📋 ISO 27001 Annex A Controls
-- ✅ Content Safety Standards
+### Prompt Injection Defense
+- Direct prompt overrides (`ignore previous instructions`)
+- System prompt leakage attempts
+- Persona hijacking
+- Data exfiltration patterns
+- Code injection in content
+- Delimiter attacks and encoding evasion
 
 ---
 
-## ⛓️ Blockchain Integration
+## ⛓️ Blockchain & Hash Chain
 
-### Smart Contract Features
-- **Content Hash Recording** - SHA-256 hashes of source and output
-- **Compliance Badges** - On-chain compliance certifications
-- **Approval Chain** - Multi-party sign-off on-chain
-- **Audit Trail** - Complete immutable activity log
-- **Publish Prevention** - Prevents duplicate publication
-- **Verification** - Verify transformation authenticity
+### Permissioned Hash-Chain Ledger
 
-### Verification Page
-Navigate to `/verify` to verify any transformation's authenticity by entering its ID.
+Every event is stored as a block with SHA-256 hash chaining:
 
----
+```json
+{
+  "blockId": "a1b2c3...",
+  "blockNumber": 42,
+  "eventType": "APPROVAL",
+  "actorId": "ap-001",
+  "actorName": "Senior Reviewer",
+  "actorRole": "APPROVER",
+  "contentHash": "sha256...",
+  "prevHash": "merkleRoot of previous block",
+  "merkleRoot": "sha256 of all block fields",
+  "signature": "HMAC-SHA256 using actor's private key",
+  "timestamp": 1693000000000
+}
+```
 
-## 🔐 Multi-Signature Approval
+### Per-User RSA Keypairs
+- Generated at account creation
+- Public key stored server-side
+- Private key used to sign approvals
+- Signatures are HMAC-SHA256 tied to specific identities
 
-| Output Type | Required Approvals | Deadline |
-|-------------|-------------------|----------|
-| LinkedIn/Twitter/Infographic | 1 (Content Manager) | 24 hours |
-| Video/Presentation | 2 (Security + Content) | 48 hours |
-| Executive Summary | 2 (Security + Executive) | 48 hours |
-| Advisory | 3 (Security + Compliance + Executive) | 72 hours |
-| Crisis Response | 4 (Security + Compliance + Executive + Legal) | 4 hours |
-
-### Approval Roles:
-- ✍️ Content Creator
-- 🛡️ Security Officer
-- 📋 Compliance Officer
-- 📝 Content Manager
-- 👔 Executive
-- ⚖️ Legal Counsel
-- 🔐 Data Protection Officer
-- 🖥️ System Admin
+### Chain Verification
+- Auditor portal verifies entire chain integrity
+- Recomputes all hashes and checks prev_hash links
+- Flags any broken link or tampered block
 
 ---
 
-## 📊 Impact Metrics
+## 📡 API Reference
 
-The platform generates impact reports including:
-- **Content Quality** - Readability score, word count, reading level
-- **Reach Potential** - Estimated impressions, best posting times
-- **Engagement Prediction** - Engagement rate, virality score
-- **SEO Metrics** - Keyword density, heading structure
-- **Accessibility Score** - Content accessibility rating
+### Auth API — `/api/auth`
+
+| Method | Action | Description |
+|--------|--------|-------------|
+| POST | `login` | Username + password + portal login |
+| POST | `google_login` | Google OAuth (demo mode) |
+| POST | `verify_mfa` | Verify TOTP code during login |
+| POST | `start_mfa_enrollment` | Generate TOTP secret + QR code |
+| POST | `verify_mfa_enrollment` | Verify first TOTP code to activate MFA |
+| POST | `update_role` | Change user's portal role and level |
+| GET | `action=users` | List all users |
+| GET | `action=totp_remaining` | Seconds until TOTP code refreshes |
+
+### Transform API — `/api/transform`
+
+| Method | Action | Description |
+|--------|--------|-------------|
+| POST | `sanitize` | Prompt injection scan |
+| POST | `dlp_scan` | Data loss prevention scan |
+| POST | `threat_analysis` | Security threat analysis |
+| POST | `compliance_check` | Regulatory compliance check |
+| POST | `transform` | Generate all selected outputs |
+| POST | `generate_pptx` | Generate PPTX slide data |
+| POST | `generate_srt` | Generate SRT subtitle file |
+| POST | `generate_infographic` | Generate SVG infographic |
+| POST | `generate_stix` | Generate STIX 2.1 bundle |
+
+### Hash Chain API — `/api/hashchain`
+
+| Method | Action | Description |
+|--------|--------|-------------|
+| POST | `append` | Add new block to chain |
+| POST | `verify` | Verify entire chain integrity |
+| GET | `action=chain` | Get all blocks |
+| GET | `action=verify` | Run integrity verification |
+| GET | `action=stats` | Chain statistics |
+
+### Plugin API — `/api/plugins`
+
+| Method | Action | Description |
+|--------|--------|-------------|
+| POST | `toggle` | Enable/disable a plugin |
+| GET | `action=list` | List all plugins |
+| GET | `action=categories` | List categories with counts |
+| GET | `action=stats` | Plugin statistics |
 
 ---
 
-## 📁 Project Structure
+## 📥 File Downloads
+
+| Output Type | File Format | Download Button |
+|-------------|-------------|-----------------|
+| Presentation | PPTX (OOXML) | 📥 PPTX |
+| Video Package | SRT subtitles | 📥 SRT |
+| Infographic | SVG visual | 📥 SVG |
+| Advisory | STIX 2.1 JSON | 📥 STIX |
+
+---
+
+## 📤 SIEM Integration
+
+Export audit logs in SIEM-compatible formats:
+
+| Format | Compatible SIEMs | Use Case |
+|--------|-----------------|----------|
+| **JSON** | Elasticsearch, Logstash, Splunk HEC, Sentinel | Structured ingestion |
+| **CEF** | ArcSight, QRadar, Splunk (CEF) | Syslog-compatible |
+| **CSV** | Compliance reporting, Excel | Spreadsheet analysis |
+| **Syslog** | Fluentd, rsyslog, syslog-ng | Log forwarding |
+
+Export endpoint: `GET /api/audit?action=export&format=json|riskLevels=HIGH`
+
+---
+
+## 🛠️ Development
+
+### Project Structure
 
 ```
 genai-platform/
 ├── src/
-│   ├── app/                      # Next.js pages
-│   │   ├── page.tsx             # Main dashboard
-│   │   ├── layout.tsx           # Root layout
-│   │   ├── globals.css          # Global styles
-│   │   ├── verify/              # Blockchain verification page
-│   │   │   └── page.tsx
-│   │   └── api/                 # API routes
-│   │       ├── transform/       # Content transformation
-│   │       ├── blockchain/      # Blockchain operations
-│   │       ├── audit/           # Audit trail
-│   │       └── approval/        # Multi-sig approval
-│   ├── lib/                     # Core libraries
-│   │   ├── transformer.ts      # Content transformation engine
-│   │   ├── blockchain.ts       # Blockchain verification service
-│   │   ├── dlp-scanner.ts      # Data Loss Prevention scanner
-│   │   ├── threat-analyzer.ts  # Threat analysis engine
-│   │   ├── compliance-checker.ts # Compliance validation
-│   │   ├── multisig.ts         # Multi-signature approval
-│   │   ├── audit-tracker.ts    # Centralized audit trail
-│   │   ├── translation.ts      # Multi-language support
-│   │   └── impact-metrics.ts   # Impact measurement
-│   └── contracts/               # Smart contracts
-│       └── ContentVerification.sol
+│   ├── app/
+│   │   ├── page.tsx              # Landing page
+│   │   ├── dashboard/page.tsx    # Main dashboard (all tabs)
+│   │   ├── login/                # Login portal
+│   │   ├── verify/               # Content verification
+│   │   └── api/                  # 9 API endpoints
+│   │       ├── auth/             # Auth (JWT, Google, TOTP)
+│   │       ├── transform/        # Content transformation
+│   │       ├── blockchain/       # Blockchain operations
+│   │       ├── hashchain/        # Hash-chain ledger
+│   │       ├── approval/         # Multi-sig approval
+│   │       ├── upload/           # File upload + URL fetch
+│   │       ├── rbac/             # Role-based access control
+│   │       ├── audit/            # Audit trail + SIEM export
+│   │       └── plugins/          # Plugin management
+│   ├── lib/
+│   │   ├── auth.ts               # Auth system (JWT, Google, TOTP)
+│   │   ├── totp.ts               # RFC 6238 TOTP implementation
+│   │   ├── qr-code.ts            # QR code SVG generator
+│   │   ├── hashchain.ts          # Hash-chain ledger
+│   │   ├── blockchain.ts         # Blockchain service
+│   │   ├── rbac.ts               # RBAC (11 roles, 20 permissions)
+│   │   ├── multisig.ts           # Multi-signature approval
+│   │   ├── transformer.ts        # Content transformation engine
+│   │   ├── output-plugins.ts     # Plugin architecture (8 plugins)
+│   │   ├── file-generators.ts    # PPTX, SRT, SVG, STIX generators
+│   │   ├── dlp-scanner.ts        # Data loss prevention
+│   │   ├── threat-analyzer.ts    # Threat analysis
+│   │   ├── compliance-checker.ts # Compliance checking
+│   │   ├── prompt-guard.ts       # Prompt injection defense
+│   │   ├── siem-export.ts        # SIEM export (CEF/JSON/CSV/Syslog)
+│   │   ├── audit-tracker.ts      # Audit logging
+│   │   ├── impact-metrics.ts     # Impact metrics
+│   │   └── translation.ts        # Translation service
+│   └── contracts/
+│       └── ContentVerification.sol # Solidity smart contract
 ├── package.json
 ├── tsconfig.json
-├── next.config.ts
-└── README.md
+└── .env.local                    # Environment variables (not committed)
 ```
 
----
+### Scripts
 
-## 🎬 Demo Workflow
+```bash
+npm run dev      # Start development server (http://localhost:3000)
+npm run build    # Production build
+npm run start    # Start production server
+npm run lint     # Run ESLint
+```
 
-1. **Input Content** → Paste source text, select output formats, configure options
-2. **Security Scan** → DLP detects sensitive data, threat analysis checks for risks
-3. **Compliance Check** → Validates against IT Act, DPDP, GDPR regulations
-4. **Transformation** → Generates all selected output formats
-5. **Blockchain Record** → Transformation recorded with hashes on-chain
-6. **Approval** → Multi-signature approval from required roles
-7. **Publish** → After verification and approval, safe to publish externally
+### Adding New Features
 
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. **New output type** → Register a plugin in `src/lib/output-plugins.ts`
+2. **New API endpoint** → Add route in `src/app/api/<name>/route.ts`
+3. **New security check** → Add scanner in `src/lib/` and wire into transform pipeline
+4. **New audit event** → Add type to `AuditEventType` in `src/lib/audit-tracker.ts`
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-## 🏢 Organization
-
-**National Technical Research Organisation (NTRO)**
-- Problem Statement: Gen AI Platform for Automated Content Transformation
-- Category: Software
-- Theme: Blockchain & Cybersecurity
-- PS Number: SIH26154
-
----
-
-*Built with ❤️ for Smart India Hackathon 2.0*
+MIT — Built for Smart India Hackathon 2.0 (Blockchain & Cybersecurity theme)

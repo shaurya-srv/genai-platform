@@ -215,10 +215,19 @@ export async function POST(request: NextRequest) {
 
       case "generate_infographic": {
         const { title: infTitle, sections, colorScheme, subtitle, stats } = body;
+        // Ensure all sections have required fields with defaults
+        const safeSections = (sections || []).map((s: any, i: number) => ({
+          headline: s.headline || s.title || `Section ${i + 1}`,
+          content: s.content || s.text || '',
+          icon: s.icon || ['📊', '🔍', '⚡', '🛡️', '📈', '🎯', '💡'][i % 7],
+          dataPoint: s.dataPoint || undefined,
+          color: s.color || ['#e94560', '#0f3460', '#16213e', '#533483', '#1a1a2e', '#2ecc71', '#f39c12'][i % 7],
+          percentage: s.percentage || undefined,
+        }));
         const svg = generateInfographicSVG({
           title: infTitle || 'Infographic',
           subtitle: subtitle || 'NTRO GenAI Platform',
-          sections: sections || [],
+          sections: safeSections,
           colorScheme: colorScheme || undefined,
           stats: stats || [],
         });

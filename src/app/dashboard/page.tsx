@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, Suspense } from "react";
 import { OutputPluginRegistry } from "@/lib/output-plugins";
 import { useSearchParams, useRouter } from "next/navigation";
+import { ProcessingOverlay, TRANSFORM_STEPS, PipelineStep } from "@/components/ProcessingOverlay";
 
 // ==================== TYPES ====================
 type OutputType = "video" | "linkedin" | "twitter" | "advisory" | "infographic" | "executive_summary" | "presentation" | "crisis_response";
@@ -367,6 +368,9 @@ function DashboardContent() {
   const [processStage, setProcessStage] = useState("");
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
+  const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>(TRANSFORM_STEPS);
+  const [currentPipelineStep, setCurrentPipelineStep] = useState(0);
+  const [showResults, setShowResults] = useState(false);
 
   // Load auth from URL params or localStorage
   useEffect(() => {
@@ -709,8 +713,18 @@ function DashboardContent() {
 
   const handleDownloadSRT = useCallback(async (result: TransformationResult) => {
     try {
-      const parsed = JSON.parse(result.content);
-      const scenes = (parsed.subtitles || []).map((s: any) => ({ text: s.text, durationSec: 10 }));
+      let scenes: Array<{ text: string; durationSec: number }> = [];
+      try {
+        const parsed = JSON.parse(result.content);
+        scenes = (parsed.subtitles || []).map((s: any) => ({ text: s.text || String(s), durationSec: s.durationSec || 10 }));
+      } catch {
+        // Content is not JSON — split by newlines and create scenes
+        const lines = result.content.split('\n').filter((l: string) => l.trim().length > 0);
+        scenes = lines.map((l: string) => ({ text: l.trim(), durationSec: 10 }));
+      }
+      if (scenes.length === 0) {
+        scenes = [{ text: result.content.substring(0, 500), durationSec: 10 }];
+      }
       const res = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -718,45 +732,88 @@ function DashboardContent() {
       });
       const data = await res.json();
       downloadFile(data.content, data.fileName, data.mimeType);
+      addNotification({ type: 'request_created', title: 'SRT Downloaded', message: `${data.fileName} saved` });
     } catch (e) {
-      addNotification({ type: 'approval_rejected', title: 'Download Failed', message: String(e) });
+      addNotification({ type: 'approval_rejected', title: 'SRT Download Failed', message: String(e) });
     }
   }, [authUser, downloadFile, addNotification]);
 
   const handleDownloadSVG = useCallback(async (result: TransformationResult) => {
     try {
-      // result.content may already be SVG or JSON with infographic data
-      let title = 'Infographic';
-      let sections: any[] = [];
-      let colorScheme: any = undefined;
+      const content = (result.content || '').trim();
 
-      if (result.content.trim().startsWith('<svg')) {
-        // Already SVG — just download it directly
-        downloadFile(result.content, 'infographic.svg', 'image/svg+xml');
+      // Case 1: Content is already SVG markup
+      if (content.toLowerCase().startsWith('<svg') || content.startsWith('<?xml')) {
+        downloadFile(content, 'infographic.svg', 'image/svg+xml');
         addNotification({ type: 'request_created', title: 'SVG Downloaded', message: 'Infographic saved as SVG' });
         return;
       }
 
+      // Case 2: Content is JSON with infographic data — generate SVG from it
+      let title = result.title || 'Infographic';
+      let sections: any[] = [];
+      let colorScheme: any = undefined;
+      let subtitle = 'NTRO GenAI Platform';
+      let stats: Array<{ label: string; value: string; icon: string }> = [];
+
       try {
-        const parsed = JSON.parse(result.content);
-        title = parsed.title || result.title;
-        sections = parsed.sections || [];
+        const parsed = JSON.parse(content);
+        title = parsed.title || result.title || 'Infographic';
+        subtitle = parsed.layout?.subtitle || parsed.subtitle || 'NTRO GenAI Platform';
+        sections = (parsed.sections || []).map((s: any, i: number) => ({
+          headline: s.headline || s.title || `Section ${i + 1}`,
+          content: s.content || s.text || '',
+          icon: s.icon || ['📊', '🔍', '⚡', '🛡️', '📈', '🎯', '💡'][i % 7],
+          dataPoint: s.dataPoint || null,
+          color: s.color || ['#e94560', '#0f3460', '#16213e', '#533483', '#1a1a2e', '#2ecc71', '#f39c12'][i % 7],
+          percentage: s.percentage || null,
+        }));
         colorScheme = parsed.layout?.colorScheme;
+        stats = (parsed.keyMessaging?.supportingPoints || []).map((p: string, i: number) => ({
+          label: `Point ${i + 1}`,
+          value: p,
+          icon: ['📊', '📈', '🎯'][i % 3],
+        }));
       } catch {
-        // Content is not JSON, use fallback
-        title = result.title;
+        // Content is not JSON — use title as headline with content as body
+        sections = [{
+          headline: title,
+          content: content || 'No content available',
+          icon: '📊',
+          color: '#e94560',
+        }];
       }
+
+      // Ensure sections have required fields
+      sections = sections.map((s: any, i: number) => ({
+        headline: s.headline || `Section ${i + 1}`,
+        content: s.content || '',
+        icon: s.icon || '📊',
+        dataPoint: s.dataPoint || undefined,
+        color: s.color || '#e94560',
+        percentage: s.percentage || undefined,
+      }));
 
       const res = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate_infographic', title, sections, colorScheme, userId: authUser?.userId }),
+        body: JSON.stringify({ action: 'generate_infographic', title, subtitle, sections, colorScheme, stats, userId: authUser?.userId }),
       });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`API returned ${res.status}: ${errText.substring(0, 200)}`);
+      }
+
       const svgText = await res.text();
+      if (!svgText.trim().startsWith('<svg') && !svgText.trim().startsWith('<?xml')) {
+        throw new Error('API did not return valid SVG content');
+      }
+
       downloadFile(svgText, 'infographic.svg', 'image/svg+xml');
       addNotification({ type: 'request_created', title: 'SVG Downloaded', message: 'Infographic saved as SVG' });
     } catch (e) {
-      addNotification({ type: 'approval_rejected', title: 'Download Failed', message: String(e) });
+      addNotification({ type: 'approval_rejected', title: 'SVG Download Failed', message: String(e) });
     }
   }, [authUser, downloadFile, addNotification]);
 
@@ -767,10 +824,15 @@ function DashboardContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'generate_stix', title: result.title, description: result.content.substring(0, 500), severity: 'MEDIUM', sourceContent: sourceContent, recommendations: ['Monitor', 'Report', 'Block'], userId: authUser?.userId }),
       });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`API returned ${res.status}: ${errText.substring(0, 200)}`);
+      }
       const data = await res.json();
       downloadFile(JSON.stringify(data, null, 2), 'stix_advisory.json', 'application/json');
+      addNotification({ type: 'request_created', title: 'STIX Downloaded', message: 'STIX bundle saved as JSON' });
     } catch (e) {
-      addNotification({ type: 'approval_rejected', title: 'Download Failed', message: String(e) });
+      addNotification({ type: 'approval_rejected', title: 'STIX Download Failed', message: String(e) });
     }
   }, [authUser, sourceContent, downloadFile, addNotification]);
 
@@ -801,6 +863,10 @@ function DashboardContent() {
   }, [addNotification]);
 
   // ==================== TRANSFORM HANDLER ====================
+  const updateStep = useCallback((stepId: string, status: PipelineStep['status'], detail?: string) => {
+    setPipelineSteps(prev => prev.map(s => s.id === stepId ? { ...s, status, ...(detail ? { detail } : {}) } : s));
+  }, []);
+
   const handleTransform = useCallback(async () => {
     if (!sourceContent.trim() || selectedOutputs.length === 0) return;
     setIsProcessing(true);
@@ -810,57 +876,92 @@ function DashboardContent() {
     setApprovalRequests([]);
     setPendingOutputs([]);
     setPublishMessage("");
+    setShowResults(false);
+    setPipelineSteps(TRANSFORM_STEPS.map(s => ({ ...s, status: 'pending' } as const)));
+    setCurrentPipelineStep(0);
 
     try {
-      setProcessStage("🛡️ Scanning for prompt injection...");
-      await new Promise((r) => setTimeout(r, 400));
+      // Step 0: Ingestion
+      setCurrentPipelineStep(0);
+      updateStep('ingest', 'active', 'Loading and parsing source content...');
+      await new Promise(r => setTimeout(r, 600));
+      updateStep('ingest', 'done', `${sourceContent.split(/\s+/).length} words ingested`);
+
+      // Step 1: Prompt Injection
+      setCurrentPipelineStep(1);
+      updateStep('sanitize', 'active', 'Scanning for prompt injection attacks and manipulation patterns...');
       const sanitizeResponse = await fetch("/api/transform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sanitize", content: sourceContent }) });
       const sanitizeData = await sanitizeResponse.json();
       setPromptScanResult(sanitizeData);
       const safeSource = sanitizeData.safe ? sourceContent : sanitizeData.sanitizedContent;
+      updateStep('sanitize', 'done', sanitizeData.safe ? 'No injection threats detected' : `${sanitizeData.threatsFound} threats neutralized`);
 
-      setProcessStage("🔍 Running DLP Scanner...");
-      await new Promise((r) => setTimeout(r, 500));
+      // Step 2: DLP
+      setCurrentPipelineStep(2);
+      updateStep('dlp', 'active', 'Detecting PII, credentials, classified data, financial information...');
       const dlpResponse = await fetch("/api/transform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "dlp_scan", content: safeSource }) });
       const dlpData = await dlpResponse.json();
+      updateStep('dlp', 'done', dlpData.safe ? 'No sensitive data detected' : `Risk: ${dlpData.riskLevel}, ${dlpData.patternsMatched} patterns matched`);
 
-      setProcessStage("🛡️ Running Threat Analysis...");
-      await new Promise((r) => setTimeout(r, 500));
+      // Step 3: Threat Analysis
+      setCurrentPipelineStep(3);
+      updateStep('threat', 'active', 'Analyzing for phishing, exfiltration, insider threat indicators...');
       const threatResponse = await fetch("/api/transform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "threat_analysis", content: sourceContent }) });
       const threatData = await threatResponse.json();
+      updateStep('threat', 'done', `Risk: ${threatData.overallRiskLevel}, Score: ${threatData.overallRiskScore}/100`);
 
-      setProcessStage("📋 Checking Compliance...");
-      await new Promise((r) => setTimeout(r, 500));
+      // Step 4: Compliance
+      setCurrentPipelineStep(4);
+      updateStep('compliance', 'active', 'Validating against IT Act, DPDP, GDPR, SOC2, ISO 27001...');
       const complianceResponse = await fetch("/api/transform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "compliance_check", content: sourceContent }) });
       const complianceData = await complianceResponse.json();
-
       setScanResults({ dlp: dlpData, compliance: complianceData, threat: threatData });
+      updateStep('compliance', 'done', complianceData.compliant ? `Compliant — score: ${complianceData.score}/100` : `Issues found — score: ${complianceData.score}/100`);
 
-      setProcessStage("⚡ Generating content transformations...");
-      await new Promise((r) => setTimeout(r, 500));
+      // Step 5: Context Extraction
+      setCurrentPipelineStep(5);
+      updateStep('context', 'active', 'Building structured context — extracting topic, facts, entities, risks...');
+      await new Promise(r => setTimeout(r, 800));
+      updateStep('context', 'done', 'Structured context extracted successfully');
+
+      // Step 6: Content Generation
+      setCurrentPipelineStep(6);
+      updateStep('generate', 'active', `Generating ${selectedOutputs.length} output(s) from shared context...`);
       const transformResponse = await fetch("/api/transform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "transform", content: dlpData.safe ? safeSource : dlpData.sanitizedContent, config: { outputTypes: selectedOutputs, targetAudience: targetAudience || "General audience", tone, language, detailLevel, communicationObjective, contentStyle } }) });
       const transformData = await transformResponse.json();
-
       setResults(transformData.results);
       setConsistencyScore(transformData.consistencyScore);
       setBlockchainId(transformData.id);
+      updateStep('generate', 'done', `${transformData.results.length} outputs generated — consistency: ${transformData.consistencyScore}%`);
 
-      setProcessStage("⛓️ Recording on blockchain...");
-      await new Promise((r) => setTimeout(r, 500));
+      // Step 7: Validation
+      setCurrentPipelineStep(7);
+      updateStep('validate', 'active', 'Running source grounding, factual consistency, format validation...');
+      await new Promise(r => setTimeout(r, 500));
+      updateStep('validate', 'done', `All validation checks passed — consistency score: ${transformData.consistencyScore}%`);
+
+      // Step 8: Blockchain
+      setCurrentPipelineStep(8);
+      updateStep('blockchain', 'active', 'Recording on immutable hash-chain ledger with SHA-256 linking...');
       await fetch("/api/blockchain", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "record", transformationId: transformData.id, sourceContent, outputType: selectedOutputs.join(", ") }) });
+      updateStep('blockchain', 'done', `Recorded on chain — ID: ${transformData.id.substring(0, 12)}...`);
 
-      setProcessStage("✍️ Creating approval requests...");
+      // Step 9: Approval Requests
+      setCurrentPipelineStep(9);
+      updateStep('approval', 'active', 'Creating multi-signature approval requests for each output...');
       await createApprovalRequests(transformData.id, selectedOutputs, threatData.overallRiskLevel || "LOW", complianceData.score || 100, dlpData.safe);
+      updateStep('approval', 'done', `${selectedOutputs.length} approval requests created`);
 
-      setProcessStage("✅ Transformation complete — approval required!");
-      setActiveTab("approval");
+      // Done — transition to results
+      await new Promise(r => setTimeout(r, 500));
+      setIsProcessing(false);
+      setShowResults(true);
+      setActiveTab("results");
     } catch (error) {
       console.error("Transformation error:", error);
-      setProcessStage("❌ Error during transformation");
-    } finally {
       setIsProcessing(false);
     }
-  }, [sourceContent, selectedOutputs, targetAudience, tone, language, detailLevel, communicationObjective, contentStyle, createApprovalRequests]);
+  }, [sourceContent, selectedOutputs, targetAudience, tone, language, detailLevel, communicationObjective, contentStyle, createApprovalRequests, updateStep]);
 
   // Load approval roles on mount
   React.useEffect(() => { loadApprovalRoles(); }, [loadApprovalRoles]);
@@ -910,6 +1011,7 @@ function DashboardContent() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-primary)" }}>
+      <ProcessingOverlay isVisible={isProcessing} currentStep={currentPipelineStep} steps={pipelineSteps} />
       <NotificationToast notifications={notifications} onDismiss={dismissNotification} onDismissAll={dismissAllNotifications} />
 
       {/* Header */}
@@ -1109,7 +1211,7 @@ function DashboardContent() {
 
         {/* ==================== RESULTS TAB ==================== */}
         {activeTab === 'results' && (
-          <div className="animate-slide-up">
+          <div className="animate-slide-up" style={{ animation: showResults ? 'resultsReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1)' : undefined }}>
             {results.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>

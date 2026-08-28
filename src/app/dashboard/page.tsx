@@ -725,11 +725,32 @@ function DashboardContent() {
 
   const handleDownloadSVG = useCallback(async (result: TransformationResult) => {
     try {
-      const parsed = JSON.parse(result.content);
+      // result.content may already be SVG or JSON with infographic data
+      let title = 'Infographic';
+      let sections: any[] = [];
+      let colorScheme: any = undefined;
+
+      if (result.content.trim().startsWith('<svg')) {
+        // Already SVG — just download it directly
+        downloadFile(result.content, 'infographic.svg', 'image/svg+xml');
+        addNotification({ type: 'request_created', title: 'SVG Downloaded', message: 'Infographic saved as SVG' });
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(result.content);
+        title = parsed.title || result.title;
+        sections = parsed.sections || [];
+        colorScheme = parsed.layout?.colorScheme;
+      } catch {
+        // Content is not JSON, use fallback
+        title = result.title;
+      }
+
       const res = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate_infographic', title: parsed.title, sections: parsed.sections, colorScheme: parsed.layout?.colorScheme, userId: authUser?.userId }),
+        body: JSON.stringify({ action: 'generate_infographic', title, sections, colorScheme, userId: authUser?.userId }),
       });
       const svgText = await res.text();
       downloadFile(svgText, 'infographic.svg', 'image/svg+xml');

@@ -10,45 +10,41 @@
 
 export type Permission =
   // Content operations
-  | 'content:submit'          // Create new content transformation requests
-  | 'content:edit'            // Edit draft content before approval
-  | 'content:read'            // View content and results
-  | 'content:delete'          // Delete content
+  | 'content:submit'
+  | 'content:edit'
+  | 'content:read'
+  | 'content:delete'
   // Approval operations
-  | 'approval:approve'        // Approve content for publication
-  | 'approval:reject'         // Reject content
-  | 'approval:view'           // View approval requests and history
+  | 'approval:approve'
+  | 'approval:reject'
+  | 'approval:view'
   // Publication
-  | 'publish:create'          // Publish approved content
-  | 'publish:view'            // View publication status
+  | 'publish:create'
+  | 'publish:view'
   // Security
-  | 'security:scan'           // Run DLP/threat/compliance scans
-  | 'security:view'           // View scan results
-  | 'security:override'       // Override security blocks
+  | 'security:scan'
+  | 'security:view'
+  | 'security:override'
   // Admin
-  | 'admin:roles'             // Manage roles and permissions
-  | 'admin:users'             // Manage user assignments
-  | 'admin:audit'             // View full audit trail
-  | 'admin:config'            // Modify system configuration
+  | 'admin:roles'
+  | 'admin:users'
+  | 'admin:audit'
+  | 'admin:config'
   // Blockchain
-  | 'blockchain:view'         // View blockchain records
-  | 'blockchain:verify'       // Verify content on blockchain
+  | 'blockchain:view'
+  | 'blockchain:verify'
   // Plugins
-  | 'plugins:manage'          // Enable/disable output plugins
+  | 'plugins:manage'
+  // NTRO Section access
+  | 'section:transform'
+  | 'section:approval'
+  | 'section:analysis'
+  | 'section:threat'
+  | 'section:compliance'
+  | 'section:dlp'
+  | 'section:incident'
+  | 'section:linkage'
   ;
-
-export type RBACRole =
-  | 'VIEWER'
-  | 'CONTENT_CREATOR'
-  | 'CONTENT_EDITOR'
-  | 'ANALYST'
-  | 'SECURITY_OFFICER'
-  | 'COMPLIANCE_OFFICER'
-  | 'CONTENT_MANAGER'
-  | 'EXECUTIVE'
-  | 'LEGAL_COUNSEL'
-  | 'DPO'
-  | 'SYSTEM_ADMIN';
 
 export interface RoleDefinition {
   id: RBACRole;

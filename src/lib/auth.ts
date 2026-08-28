@@ -18,19 +18,24 @@ import { generateTOTPSecret, verifyTOTP, generateRecoveryCodes } from './totp';
 export type PortalRole = 'OPERATOR' | 'APPROVER' | 'ADMIN' | 'AUDITOR';
 
 /** Role levels — determines access hierarchy */
-export type RoleLevel = 'executive' | 'manager' | 'lead' | 'employee' | 'contractor' | 'intern';
+export type RoleLevel = 'chairman' | 'distinguished_scientist' | 'outstanding_scientist' | 'scientist_g' | 'scientist_f' | 'scientist_e' | 'scientist_d' | 'scientist_c' | 'general_scientist';
 
 export const ROLE_LEVEL_HIERARCHY: Record<RoleLevel, number> = {
-  executive: 6, manager: 5, lead: 4, employee: 3, contractor: 2, intern: 1,
+  chairman: 9, distinguished_scientist: 8, outstanding_scientist: 7,
+  scientist_g: 6, scientist_f: 5, scientist_e: 4,
+  scientist_d: 3, scientist_c: 2, general_scientist: 1,
 };
 
-export const ROLE_LEVEL_LABELS: Record<RoleLevel, { label: string; icon: string; color: string }> = {
-  executive: { label: 'Executive', icon: '👔', color: '#ec4899' },
-  manager: { label: 'Manager', icon: '📋', color: '#f59e0b' },
-  lead: { label: 'Team Lead', icon: '⭐', color: '#8b5cf6' },
-  employee: { label: 'Employee', icon: '👤', color: '#3b82f6' },
-  contractor: { label: 'Contractor', icon: '🤝', color: '#06b6d4' },
-  intern: { label: 'Intern', icon: '🎓', color: '#10b981' },
+export const ROLE_LEVEL_LABELS: Record<RoleLevel, { label: string; icon: string; color: string; tier: string }> = {
+  chairman: { label: 'Chairman', icon: '🏛️', color: '#dc2626', tier: 'Level 1 - Executive' },
+  distinguished_scientist: { label: 'Distinguished Scientist', icon: '🏆', color: '#ec4899', tier: 'Level 1 - Executive' },
+  outstanding_scientist: { label: 'Outstanding Scientist', icon: '⭐', color: '#f43f5e', tier: 'Level 1 - Executive' },
+  scientist_g: { label: 'Scientist G', icon: '👔', color: '#f59e0b', tier: 'Level 2 - Senior Management' },
+  scientist_f: { label: 'Scientist F', icon: '📋', color: '#d97706', tier: 'Level 2 - Senior Management' },
+  scientist_e: { label: 'Scientist E', icon: '📊', color: '#b45309', tier: 'Level 2 - Senior Management' },
+  scientist_d: { label: 'Scientist D', icon: '📑', color: '#3b82f6', tier: 'Level 3 - Middle Management' },
+  scientist_c: { label: 'Scientist C', icon: '📁', color: '#2563eb', tier: 'Level 3 - Middle Management' },
+  general_scientist: { label: 'General Scientist', icon: '🔬', color: '#10b981', tier: 'Level 4 - General Staff' },
 };
 
 export interface AuthUser {
@@ -256,6 +261,37 @@ export function verifySignature(userId: string, data: string, signature: string)
 
 // ==================== AUTH SERVICE ====================
 
+
+
+// ==================== SECTION VISIBILITY ====================
+
+export type SectionId = 'transform' | 'approval' | 'analysis' | 'threat' | 'compliance' | 'dlp' | 'incident' | 'linkage';
+
+export interface SectionConfig {
+  id: SectionId;
+  name: string;
+  icon: string;
+  color: string;
+  minLevel: RoleLevel;
+  description: string;
+}
+
+export const SECTIONS: SectionConfig[] = [
+  { id: 'transform', name: 'Transformation AI', icon: '🤖', color: '#3b82f6', minLevel: 'general_scientist', description: 'Multi-source input to multi-format output' },
+  { id: 'approval', name: 'Multi-Sign Approval', icon: '✍️', color: '#10b981', minLevel: 'general_scientist', description: 'Approval chain for content publication' },
+  { id: 'analysis', name: 'Analysis & Review', icon: '📊', color: '#06b6d4', minLevel: 'scientist_d', description: 'Consistency scoring and quality metrics' },
+  { id: 'threat', name: 'Threat Analysis', icon: '🔍', color: '#ef4444', minLevel: 'scientist_d', description: 'STIX/TAXII threat intelligence' },
+  { id: 'compliance', name: 'Compliance Check', icon: '📋', color: '#f59e0b', minLevel: 'scientist_f', description: 'DPDP, GDPR, IT Act compliance' },
+  { id: 'dlp', name: 'DLP Scanner', icon: '🛡️', color: '#8b5cf6', minLevel: 'scientist_d', description: 'Data Loss Prevention scanning' },
+  { id: 'incident', name: 'Incident Response', icon: '🚨', color: '#ec4899', minLevel: 'scientist_f', description: 'Cascading incident response chain' },
+  { id: 'linkage', name: 'External Linkage', icon: '🔗', color: '#0ea5e9', minLevel: 'general_scientist', description: 'Email, LinkedIn, X integration' },
+];
+
+export function getVisibleSections(level: RoleLevel): SectionConfig[] {
+  const userLevel = ROLE_LEVEL_HIERARCHY[level];
+  return SECTIONS.filter(s => ROLE_LEVEL_HIERARCHY[s.minLevel] <= userLevel);
+}
+
 export class AuthService {
   /**
    * Initialize with default users for each portal
@@ -265,12 +301,17 @@ export class AuthService {
     initialized = true;
 
     const defaultUsers: Array<{ id: string; username: string; displayName: string; role: PortalRole; roleLevel: RoleLevel }> = [
-      { id: 'op-001', username: 'operator', displayName: 'NTRO Operator', role: 'OPERATOR', roleLevel: 'employee' },
-      { id: 'op-002', username: 'operator2', displayName: 'NTRO Operator 2', role: 'OPERATOR', roleLevel: 'contractor' },
-      { id: 'ap-001', username: 'approver', displayName: 'Senior Reviewer', role: 'APPROVER', roleLevel: 'lead' },
-      { id: 'ap-002', username: 'approver2', displayName: 'Security Reviewer', role: 'APPROVER', roleLevel: 'manager' },
-      { id: 'ad-001', username: 'admin', displayName: 'System Administrator', role: 'ADMIN', roleLevel: 'executive' },
-      { id: 'au-001', username: 'auditor', displayName: 'Chief Auditor', role: 'AUDITOR', roleLevel: 'manager' },
+      { id: 'ch-001', username: 'chairman', displayName: 'Chairman NTRO', role: 'ADMIN', roleLevel: 'chairman' },
+      { id: 'ds-001', username: 'dscientist', displayName: 'Distinguished Scientist', role: 'ADMIN', roleLevel: 'distinguished_scientist' },
+      { id: 'os-001', username: 'oscientist', displayName: 'Outstanding Scientist', role: 'APPROVER', roleLevel: 'outstanding_scientist' },
+      { id: 'sg-001', username: 'scientist_g', displayName: 'Scientist G - Senior Director', role: 'APPROVER', roleLevel: 'scientist_g' },
+      { id: 'sf-001', username: 'scientist_f', displayName: 'Scientist F - Joint Scientist', role: 'APPROVER', roleLevel: 'scientist_f' },
+      { id: 'se-001', username: 'scientist_e', displayName: 'Scientist E - Deputy Scientist', role: 'APPROVER', roleLevel: 'scientist_e' },
+      { id: 'sd-001', username: 'scientist_d', displayName: 'Scientist D - Technical Lead', role: 'OPERATOR', roleLevel: 'scientist_d' },
+      { id: 'sc-001', username: 'scientist_c', displayName: 'Scientist C - Operations Manager', role: 'OPERATOR', roleLevel: 'scientist_c' },
+      { id: 'gs-001', username: 'scientist', displayName: 'General Scientist', role: 'OPERATOR', roleLevel: 'general_scientist' },
+      { id: 'gs-002', username: 'operator2', displayName: 'NTRO Operator 2', role: 'OPERATOR', roleLevel: 'general_scientist' },
+      { id: 'au-001', username: 'auditor', displayName: 'Chief Auditor', role: 'AUDITOR', roleLevel: 'scientist_f' },
     ];
 
     for (const u of defaultUsers) {
@@ -295,12 +336,17 @@ export class AuthService {
     }
 
     // Set default passwords (in production, these would be hashed and stored)
-    userPasswords.set('operator', 'operator123');
-    userPasswords.set('operator2', 'operator123');
-    userPasswords.set('approver', 'approver123');
-    userPasswords.set('approver2', 'approver123');
-    userPasswords.set('admin', 'admin123');
-    userPasswords.set('auditor', 'auditor123');
+    userPasswords.set('chairman', 'ntro123');
+    userPasswords.set('dscientist', 'ntro123');
+    userPasswords.set('oscientist', 'ntro123');
+    userPasswords.set('scientist_g', 'ntro123');
+    userPasswords.set('scientist_f', 'ntro123');
+    userPasswords.set('scientist_e', 'ntro123');
+    userPasswords.set('scientist_d', 'ntro123');
+    userPasswords.set('scientist_c', 'ntro123');
+    userPasswords.set('scientist', 'ntro123');
+    userPasswords.set('operator2', 'ntro123');
+    userPasswords.set('auditor', 'ntro123');
   }
 
   /**
@@ -328,10 +374,10 @@ export class AuthService {
       return { success: false, error: 'Invalid credentials' };
     }
 
-    // Check portal matches role
-    if (user.role !== portal) {
+    // Check portal matches role — allow any portal for dual-auth flow
+    if (user.role !== portal && portal !== 'OPERATOR') {
       loginHistory.push({ userId: user.userId, timestamp: Date.now(), success: false, portal, ip });
-      return { success: false, error: `This account is not authorized for the ${PORTAL_CONFIG[portal].name} portal. Use the ${PORTAL_CONFIG[user.role].loginRoute} portal instead.` };
+      return { success: false, error:  };
     }
 
     // MFA check — if enrolled, require TOTP verification

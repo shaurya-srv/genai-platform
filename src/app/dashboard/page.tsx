@@ -694,11 +694,48 @@ function DashboardContent() {
 
   const handleDownloadPPTX = useCallback(async (result: TransformationResult) => {
     try {
+      // Extract slides from metadata OR from content JSON
+      let slides: any[] = (result.metadata?.slides as any[]) || [];
+      if (slides.length === 0 && result.content) {
+        try {
+          const parsed = JSON.parse(result.content);
+          slides = parsed.slideDeck?.slides || parsed.slides || [];
+        } catch {
+          // Content is not JSON — generate slides from text
+          const lines = result.content.split('\n').filter((l: string) => l.trim().length > 0);
+          slides = [
+            { title: result.title.replace('Presentation: ', ''), layout: 'title', content: lines.slice(0, 2), notes: 'Opening slide', accentColor: '1a1a2e' },
+            ...lines.slice(0, 8).map((line: string, i: number) => ({
+              title: `Point ${i + 1}`,
+              layout: 'content',
+              content: [line.trim().substring(0, 120)],
+              notes: `Elaborate on this point`,
+              accentColor: ['#0f3460', '#16213e', '#533483', '#e94560'][i % 4],
+            })),
+            { title: 'Thank You', layout: 'conclusion', content: ['Key points reviewed', 'Questions & Discussion'], notes: 'Wrap up', accentColor: '1a1a2e' },
+          ];
+        }
+      }
+      // Ensure each slide has required fields
+      slides = slides.map((s: any, i: number) => ({
+        title: s.title || `Slide ${i + 1}`,
+        layout: s.layout || 'content',
+        content: Array.isArray(s.content) ? s.content : [String(s.content || '')],
+        notes: s.notes || '',
+        accentColor: s.accentColor || '#1a1a2e',
+      }));
+      if (slides.length === 0) {
+        slides = [{ title: result.title, layout: 'title', content: [result.content.substring(0, 100)], notes: '', accentColor: '1a1a2e' }];
+      }
       const res = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate_pptx', slides: result.metadata?.slides || [], title: result.title, userId: authUser?.userId }),
+        body: JSON.stringify({ action: 'generate_pptx', slides, title: result.title, userId: authUser?.userId }),
       });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`API returned ${res.status}: ${errText.substring(0, 200)}`);
+      }
       const blob = await res.blob();
       const fileName = res.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'presentation.pptx';
       const url = URL.createObjectURL(blob);
@@ -706,9 +743,9 @@ function DashboardContent() {
       a.href = url; a.download = fileName;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      addNotification({ type: 'request_created', title: 'PPTX Downloaded', message: `${fileName} saved` });
+      addNotification({ type: 'request_created', title: 'PPTX Downloaded', message: `${fileName} — ${slides.length} slides saved` });
     } catch (e) {
-      addNotification({ type: 'approval_rejected', title: 'Download Failed', message: String(e) });
+      addNotification({ type: 'approval_rejected', title: 'PPTX Download Failed', message: String(e) });
     }
   }, [authUser, addNotification]);
 

@@ -81,11 +81,11 @@ export function generateInfographicSVG(params: InfographicParams): string {
 
   // Layout constants
   const width = 1080;
-  const headerHeight = 280;
-  const sectionHeight = 180;
-  const statsBarHeight = stats.length > 0 ? 140 : 0;
-  const footerHeight = 80;
-  const totalHeight = headerHeight + statsBarHeight + sections.length * sectionHeight + footerHeight + 40;
+  const headerHeight = 300;
+  const sectionHeight = 200;
+  const statsBarHeight = stats.length > 0 ? 160 : 0;
+  const footerHeight = 100;
+  const totalHeight = headerHeight + statsBarHeight + sections.length * sectionHeight + footerHeight + 60;
 
   // ==================== HEADER ====================
   const header = `
@@ -167,45 +167,56 @@ export function generateInfographicSVG(params: InfographicParams): string {
   const sectionsOffset = headerHeight + statsBarHeight;
   const sectionsSVG = sections.map((section, i) => {
     const y = sectionsOffset + i * sectionHeight;
-    const contentLines = wrapText(section.content, 80);
+    const contentLines = wrapText(section.content, 70);
     const hasProgress = section.percentage !== undefined;
+    const hasDataPoint = !!section.dataPoint;
+    const cardH = sectionHeight - 24;
 
     return `
   <!-- Section ${i + 1}: ${section.headline} -->
   <g transform="translate(60, ${y})">
-    <!-- Card background -->
-    <rect x="0" y="0" width="960" height="${sectionHeight - 20}" rx="16" fill="${colorScheme.cardBg}" stroke="${section.color}30" stroke-width="1" filter="url(#shadow)"/>
+    <!-- Card background with gradient -->
+    <rect x="0" y="0" width="960" height="${cardH}" rx="14" fill="${colorScheme.cardBg}" stroke="${section.color}25" stroke-width="1" filter="url(#shadow)"/>
     
-    <!-- Color accent bar -->
-    <rect x="0" y="0" width="6" height="${sectionHeight - 20}" rx="3" fill="${section.color}"/>
+    <!-- Color accent bar (left) -->
+    <rect x="0" y="0" width="6" height="${cardH}" rx="3" fill="${section.color}"/>
     
-    <!-- Icon circle -->
-    <circle cx="55" cy="55" r="30" fill="${section.color}20" stroke="${section.color}50" stroke-width="1.5"/>
-    <text x="55" y="63" font-size="26" text-anchor="middle">${section.icon}</text>
+    <!-- Icon circle with glow -->
+    <circle cx="55" cy="50" r="28" fill="${section.color}18" stroke="${section.color}45" stroke-width="1.5"/>
+    <text x="55" y="58" font-size="24" text-anchor="middle">${section.icon}</text>
+    
+    <!-- Section number badge -->
+    <rect x="38" y="84" width="34" height="18" rx="9" fill="${section.color}"/>
+    <text x="55" y="97" font-size="10" font-weight="700" fill="${colorScheme.text}" text-anchor="middle" font-family="Inter, sans-serif">${i + 1}</text>
     
     <!-- Headline -->
-    <text x="100" y="42" font-size="20" font-weight="700" fill="${colorScheme.text}" font-family="Inter, sans-serif">${escapeXml(section.headline)}</text>
+    <text x="100" y="40" font-size="19" font-weight="700" fill="${colorScheme.text}" font-family="Inter, sans-serif">${escapeXml(section.headline.substring(0, 45))}</text>
     
     <!-- Content lines -->
     ${contentLines.slice(0, 3).map((line, li) =>
-      `<text x="100" y="${68 + li * 20}" font-size="13" fill="${colorScheme.text}cc" font-family="Inter, sans-serif">${escapeXml(line.substring(0, 85))}</text>`
+      `<text x="100" y="${66 + li * 20}" font-size="12.5" fill="${colorScheme.text}bb" font-family="Inter, sans-serif">${escapeXml(line.substring(0, 80))}</text>`
     ).join('\n    ')}
     
-    <!-- Data point / Progress bar -->
+    <!-- Data visualization area (right side) -->
     ${hasProgress ? `
-    <g transform="translate(680, 25)">
-      <text x="120" y="20" font-size="36" font-weight="800" fill="${section.color}" text-anchor="end" font-family="Inter, sans-serif">${section.percentage}%</text>
-      <rect x="0" y="35" width="120" height="8" rx="4" fill="${colorScheme.text}15"/>
-      <rect x="0" y="35" width="${120 * (section.percentage || 0) / 100}" height="8" rx="4" fill="${section.color}"/>
-    </g>` : section.dataPoint ? `
+    <g transform="translate(700, 18)">
+      <!-- Percentage circle -->
+      <circle cx="60" cy="40" r="35" fill="none" stroke="${colorScheme.text}12" stroke-width="6"/>
+      <circle cx="60" cy="40" r="35" fill="none" stroke="${section.color}" stroke-width="6" stroke-dasharray="${220 * (section.percentage || 0) / 100} 220" stroke-linecap="round" transform="rotate(-90 60 40)"/>
+      <text x="60" y="38" font-size="22" font-weight="800" fill="${section.color}" text-anchor="middle" font-family="Inter, sans-serif">${section.percentage}%</text>
+      <text x="60" y="54" font-size="9" fill="${colorScheme.text}88" text-anchor="middle" font-family="Inter, sans-serif">of total</text>
+    </g>` : hasDataPoint ? `
     <g transform="translate(700, 20)">
-      <text x="100" y="22" font-size="32" font-weight="800" fill="${section.color}" text-anchor="end" font-family="Inter, sans-serif">${escapeXml(section.dataPoint)}</text>
-      <rect x="40" y="38" width="60" height="4" rx="2" fill="${section.color}40"/>
+      <!-- Big number -->
+      <text x="100" y="35" font-size="34" font-weight="800" fill="${section.color}" text-anchor="end" font-family="Inter, sans-serif">${escapeXml(section.dataPoint || '')}</text>
+      <rect x="40" y="50" width="60" height="5" rx="2.5" fill="${colorScheme.text}10"/>
+      <rect x="40" y="50" width="50" height="5" rx="2.5" fill="${section.color}60"/>
+      <text x="100" y="68" font-size="9" fill="${colorScheme.text}66" text-anchor="end" font-family="Inter, sans-serif">measured</text>
     </g>` : ''}
     
-    <!-- Category badge -->
-    <rect x="100" y="${sectionHeight - 55}" width="80" height="22" rx="11" fill="${section.color}15"/>
-    <text x="140" y="${sectionHeight - 40}" font-size="9" font-weight="600" fill="${section.color}" text-anchor="middle" font-family="Inter, sans-serif" letter-spacing="1">SECTION ${i + 1}</text>
+    <!-- Bottom tag -->
+    <rect x="100" y="${cardH - 32}" width="72" height="18" rx="9" fill="${section.color}12"/>
+    <text x="136" y="${cardH - 19}" font-size="8" font-weight="600" fill="${section.color}" text-anchor="middle" font-family="Inter, sans-serif" letter-spacing="0.8">SECTION ${i + 1}</text>
   </g>`;
   }).join('\n');
 
@@ -214,10 +225,17 @@ export function generateInfographicSVG(params: InfographicParams): string {
   const footer = `
   <!-- Footer -->
   <g transform="translate(0, ${footerY})">
-    <line x1="60" y1="0" x2="${width - 60}" y2="0" stroke="${colorScheme.text}15" stroke-width="1"/>
-    <text x="60" y="30" font-size="10" fill="${colorScheme.text}55" font-family="Inter, sans-serif">Blockchain-verified content • Hash-chain integrity assured</text>
-    <text x="${width - 60}" y="30" font-size="10" fill="${colorScheme.text}55" text-anchor="end" font-family="Inter, sans-serif">${new Date().toISOString().split('T')[0]} • NTRO GenAI Platform</text>
-    <rect x="60" y="45" width="40" height="2" rx="1" fill="${colorScheme.accent}" opacity="0.4"/>
+    <rect x="0" y="0" width="${width}" height="${footerHeight}" fill="${colorScheme.primary}"/>
+    <line x1="60" y1="8" x2="${width - 60}" y2="8" stroke="${colorScheme.accent}40" stroke-width="1"/>
+    <!-- Logo/Brand -->
+    <rect x="60" y="25" width="6" height="24" rx="3" fill="${colorScheme.accent}"/>
+    <text x="76" y="42" font-size="12" font-weight="700" fill="${colorScheme.text}" font-family="Inter, sans-serif">NTRO GenAI Platform</text>
+    <text x="76" y="56" font-size="9" fill="${colorScheme.text}66" font-family="Inter, sans-serif">Blockchain-verified • Hash-chain integrity assured</text>
+    <!-- Right side -->
+    <text x="${width - 60}" y="38" font-size="9" fill="${colorScheme.text}55" text-anchor="end" font-family="Inter, sans-serif">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</text>
+    <text x="${width - 60}" y="52" font-size="9" fill="${colorScheme.accent}" text-anchor="end" font-weight="600" font-family="Inter, sans-serif">Smart India Hackathon 2.0</text>
+    <!-- Bottom accent line -->
+    <rect x="0" y="${footerHeight - 3}" width="${width}" height="3" fill="url(#accentGrad)"/>
   </g>`;
 
   // ==================== ASSEMBLE ====================

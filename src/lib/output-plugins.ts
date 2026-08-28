@@ -355,11 +355,28 @@ ${keyFindings.map((f, i) => `  ${i + 1}. ${f.trim()}`).join('\n')}
 }
 
 function transformInfographic(source: string, config: TransformationConfig): TransformationResult {
-  const stats = source.match(/\d+[%$KMB+]*/g) || [];
-  const keyPoints = source.split(/[.!?]+/).filter(s => s.trim().length > 10).slice(0, 7);
+  const numbers = source.match(/\d+[.,]?\d*\s*(%|million|billion|thousand|MB|GB|TB|ms|seconds?|minutes?|hours?|days?|weeks?|months?|years?)/gi) || [];
+  const paragraphs = source.split(/\n\n+/).filter(p => p.trim().length > 10);
+  const sentences = source.split(/[.!?]+/).filter(s => s.trim().length > 10);
+  const keyPoints = (paragraphs.length > 2 ? paragraphs : sentences).slice(0, 7);
+
+  const sectionColors = ['#e94560', '#0f3460', '#16213e', '#533483', '#2ecc71', '#f39c12', '#e74c3c'];
+  const sectionIcons = ['📊', '🔍', '⚡', '🛡️', '📈', '🎯', '💡'];
+
+  // Smart headline generation from content
+  const generateHeadline = (text: string, index: number): string => {
+    const firstWords = text.split(/\s+/).slice(0, 4).join(' ');
+    if (/\d/.test(firstWords)) return `Metric ${index + 1}`;
+    if (/critical|high|severe|urgent/i.test(text)) return 'Critical Finding';
+    if (/recommend|action|implement|should/i.test(text)) return 'Recommendation';
+    if (/attack|threat|vulnerab|exploit/i.test(text)) return 'Threat Analysis';
+    if (/impact|affect|damage|loss/i.test(text)) return 'Impact Assessment';
+    return `Key Point ${index + 1}`;
+  };
 
   const infographic = {
-    title: `Infographic: ${source.substring(0, 60)}...`,
+    title: source.split('\n')[0]?.trim().substring(0, 80) || 'Security Analysis',
+    subtitle: `${config.targetAudience || 'NTRO'} • ${new Date().toLocaleDateString()}`,
     layout: {
       type: 'Vertical Scroll',
       dimensions: '1080 x 1920px (Instagram) or 1080 x 1350px (LinkedIn)',
@@ -368,21 +385,33 @@ function transformInfographic(source: string, config: TransformationConfig): Tra
         secondary: '#16213e',
         accent: '#e94560',
         text: '#ffffff',
-        background: '#0f3460',
+        bg: '#0f3460',
+        cardBg: '#1a1a3e',
       },
     },
-    sections: keyPoints.map((point, i) => ({
-      sectionNumber: i + 1,
-      headline: `Key Point ${i + 1}`,
-      content: point.trim(),
-      icon: ['📊', '🔍', '⚡', '🛡️', '📈', '🎯', '💡'][i % 7],
-      dataPoint: stats[i] || null,
-    })),
+    sections: keyPoints.map((point, i) => {
+      const text = point.trim();
+      const shortText = text.length > 120 ? text.substring(0, 117) + '...' : text;
+      return {
+        sectionNumber: i + 1,
+        headline: generateHeadline(text, i),
+        content: shortText,
+        icon: sectionIcons[i % sectionIcons.length],
+        color: sectionColors[i % sectionColors.length],
+        dataPoint: numbers[i] || undefined,
+        percentage: numbers[i] ? parseInt(numbers[i]) || undefined : undefined,
+      };
+    }),
     keyMessaging: {
-      mainMessage: keyPoints[0]?.trim() || source.substring(0, 100),
-      supportingPoints: keyPoints.slice(1, 4).map(p => p.trim()),
+      mainMessage: keyPoints[0]?.trim()?.substring(0, 120) || source.substring(0, 120),
+      supportingPoints: keyPoints.slice(1, 4).map(p => p.trim().substring(0, 100)),
       callToAction: config.communicationObjective || 'Learn More',
     },
+    stats: numbers.slice(0, 3).map((n, i) => ({
+      label: ['Total Impact', 'Risk Score', 'Priority'][i],
+      value: n,
+      icon: ['📊', '⚠️', '🎯'][i],
+    })),
     designRecommendations: [
       'Use bold, contrasting colors for data points',
       'Include icons for each section',
@@ -400,7 +429,7 @@ function transformInfographic(source: string, config: TransformationConfig): Tra
     metadata: {
       dimensions: infographic.layout.dimensions,
       sections: infographic.sections.length,
-      dataPoints: stats.length,
+      dataPoints: numbers.length,
       format: 'PNG/SVG recommended',
     },
   };
@@ -457,45 +486,132 @@ ${recommendations.map((r, i) => `│  ✓ ${r.substring(0, 60)}`).join('\n')}
 }
 
 function transformPresentation(source: string, config: TransformationConfig): TransformationResult {
-  const keyPoints = source.split(/[.!?]+/).filter(s => s.trim().length > 10).slice(0, 10);
+  // Smart content extraction: split into logical sections
+  const paragraphs = source.split(/\n\n+/).filter(p => p.trim().length > 5);
+  const sentences = source.split(/[.!?]+/).filter(s => s.trim().length > 10);
+  const hasNumberedItems = /\d+[.)\s]/.test(source);
 
-  const slides = [
-    {
-      slideNumber: 1,
-      title: 'Title Slide',
-      layout: 'Title',
-      content: source.substring(0, 60),
-      notes: 'Welcome and introduce the topic. Set the stage for the presentation.',
-      visual: 'Organization logo, date, presenter name',
-    },
-    ...keyPoints.map((point, i) => ({
-      slideNumber: i + 2,
-      title: `Key Point ${i + 1}`,
-      layout: i % 3 === 0 ? 'Content with Image' : 'Two Content',
-      content: point.trim(),
-      notes: `Elaborate on: ${point.trim()}. Provide context and examples.`,
-      visual: i % 2 === 0 ? 'Data visualization' : 'Supporting graphic',
-    })),
-    {
-      slideNumber: keyPoints.length + 2,
-      title: 'Summary & Next Steps',
-      layout: 'Conclusion',
-      content: `Key Takeaways:\n${keyPoints.slice(0, 3).map((p, i) => `${i + 1}. ${p.trim()}`).join('\n')}`,
-      notes: 'Summarize main points. Open floor for questions. Outline next steps.',
-      visual: 'Action items checklist',
-    },
-  ];
+  // Extract title from first line or first sentence
+  const firstLine = (paragraphs[0] || '').split('\n')[0].trim();
+  const rawTitle = firstLine.length > 80 ? sentences[0]?.trim() || firstLine.substring(0, 80) : firstLine;
+
+  // Extract key metrics/numbers for stat slides
+  const metrics = source.match(/\b\d+[.,]?\d*\s*(%|million|billion|thousand|MB|GB|TB|ms|seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b/gi) || [];
+  const hasSeverity = /\b(critical|high|medium|low|severe|urgent)\b/i.test(source);
+
+  // Build slide structure
+  const contentSlides: Array<{
+    slideNumber: number; title: string; layout: string;
+    content: string[]; notes: string; accentColor: string;
+  }> = [];
+
+  // Slide 1: Title
+  contentSlides.push({
+    slideNumber: 1,
+    title: rawTitle,
+    layout: 'title',
+    content: [
+      config.targetAudience ? `Target: ${config.targetAudience}` : '',
+      `${config.tone.charAt(0).toUpperCase() + config.tone.slice(1)} Tone`,
+      new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    ].filter(Boolean),
+    notes: `Opening slide for: ${rawTitle}. Audience: ${config.targetAudience}. Tone: ${config.tone}.`,
+    accentColor: '1a1a2e',
+  });
+
+  // Slide 2: Overview / Agenda (if enough content)
+  if (paragraphs.length > 1) {
+    const agendaItems = paragraphs.slice(1, 5).map(p => {
+      const firstSentence = p.split(/[.!?\n]/)[0]?.trim() || '';
+      return firstSentence.substring(0, 80);
+    });
+    contentSlides.push({
+      slideNumber: 2,
+      title: 'Overview',
+      layout: 'content',
+      content: agendaItems,
+      notes: `Walk through the agenda items: ${agendaItems.join('; ')}.`,
+      accentColor: '0f3460',
+    });
+  }
+
+  // Content slides from paragraphs/sentences
+  const sourceForSlides = paragraphs.length > 2 ? paragraphs : sentences;
+  const bulletPoints = sourceForSlides.slice(0, 8).map(s => s.trim().substring(0, 120));
+  const slideChunkSize = 4; // bullets per slide
+
+  for (let i = 0; i < Math.min(bulletPoints.length, 6); i += slideChunkSize) {
+    const chunk = bulletPoints.slice(i, i + slideChunkSize);
+    const slideNum = contentSlides.length + 1;
+    const chunkTitle = hasNumberedItems
+      ? `Details — Part ${Math.floor(i / slideChunkSize) + 1}`
+      : `Key Details ${slideNum > 3 ? `(continued)` : ''}`;
+
+    contentSlides.push({
+      slideNumber: slideNum,
+      title: slideNum === 2 && paragraphs.length > 2 ? 'Overview' : chunkTitle,
+      layout: 'content',
+      content: chunk.map(c => c.replace(/^[-•*\d.]+\s*/, '')),
+      notes: `Elaborate on each point. Provide evidence and examples.`,
+      accentColor: ['0f3460', '16213e', '533483', 'e94560'][i % 4],
+    });
+  }
+
+  // Metrics/Stats slide (if numbers found)
+  if (metrics.length > 0) {
+    contentSlides.push({
+      slideNumber: contentSlides.length + 1,
+      title: 'Key Metrics',
+      layout: 'content',
+      content: metrics.slice(0, 5).map(m => `📊 ${m}`),
+      notes: `Present the key metrics. Highlight trends and implications.`,
+      accentColor: 'e94560',
+    });
+  }
+
+  // Severity/Impact slide (if applicable)
+  if (hasSeverity) {
+    const severityMatch = source.match(/\b(critical|high|medium|low|severe|urgent)\b/i);
+    contentSlides.push({
+      slideNumber: contentSlides.length + 1,
+      title: 'Impact Assessment',
+      layout: 'content',
+      content: [
+        `Severity: ${severityMatch?.[0]?.toUpperCase() || 'MEDIUM'}`,
+        `Affected scope: ${config.targetAudience || 'All systems'}`,
+        `Recommended response: ${config.communicationObjective || 'Immediate action required'}`,
+      ],
+      notes: `Discuss the impact and severity. Outline recommended actions.`,
+      accentColor: 'e94560',
+    });
+  }
+
+  // Summary/Conclusion slide
+  const topTakeaways = sentences.slice(0, 3).map(s => s.trim().substring(0, 100));
+  contentSlides.push({
+    slideNumber: contentSlides.length + 1,
+    title: 'Summary & Next Steps',
+    layout: 'conclusion',
+    content: topTakeaways.length > 0
+      ? topTakeaways.map((t, i) => `${i + 1}. ${t}`)
+      : ['Key points reviewed', 'Action items identified', 'Next steps defined'],
+    notes: 'Summarize main points. Assign action items. Set follow-up timeline.',
+    accentColor: '1a1a2e',
+  });
+
+  // Renumber slides
+  const slides = contentSlides.map((s, i) => ({ ...s, slideNumber: i + 1 }));
 
   return {
     type: 'presentation' as TransformationResult['type'],
-    title: `Presentation: ${source.substring(0, 60)}...`,
+    title: `Presentation: ${rawTitle}`,
     content: JSON.stringify({
       slideDeck: {
-        title: source.substring(0, 60),
+        title: rawTitle,
         totalSlides: slides.length,
         estimatedDuration: `${slides.length * 2} minutes`,
         targetAudience: config.targetAudience,
-        theme: 'Professional Dark',
+        theme: config.tone === 'formal' ? 'Corporate Navy' : config.tone === 'urgent' ? 'Alert Red' : 'Modern Blue',
         slides,
       },
       speakerNotes: slides.map(s => ({ slide: s.slideNumber, notes: s.notes })),
@@ -503,7 +619,7 @@ function transformPresentation(source: string, config: TransformationConfig): Tr
         fontFamily: 'Calibri / Arial',
         primaryColor: '#1a1a2e',
         accentColor: '#e94560',
-        slideLayouts: ['Title', 'Content', 'Two Content', 'Content with Image', 'Conclusion'],
+        slideLayouts: ['title', 'content', 'twoColumn', 'conclusion'],
         recommendations: [
           'Use maximum 6 lines per slide',
           'Include visuals on every slide',
@@ -514,10 +630,12 @@ function transformPresentation(source: string, config: TransformationConfig): Tr
       },
     }, null, 2),
     metadata: {
+      slides: slides,
       slideCount: slides.length,
       estimatedDuration: `${slides.length * 2} min`,
       format: 'PowerPoint (PPTX) or Google Slides',
       aspectRatio: '16:9',
+      theme: config.tone === 'formal' ? 'Corporate Navy' : 'Modern Blue',
     },
   };
 }

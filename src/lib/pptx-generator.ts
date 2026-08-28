@@ -240,48 +240,81 @@ function generateSlide(slide: PPTXSlideData, index: number, totalSlides: number)
   const isTitleSlide = slide.layout === 'title' || index === 0;
   const isConclusion = slide.layout === 'conclusion' || index === totalSlides - 1;
 
-  // Build title shape
-  const titleY = isTitleSlide ? '2000000' : '400000';
-  const titleHeight = isTitleSlide ? '2000000' : '1200000';
-  const titleSize = isTitleSlide ? '4400' : '3600';
+  // Accent color from slide data (hex without #)
+  const accentHex = (slide as any).accentColor || '0f3460';
+  const accentLight = accentHex + '40';
 
-  // Build content shapes
+  // Build content shapes with numbered bullets and better formatting
   const contentShapes = slide.content.map((line, i) => {
-    const y = 1800000 + i * 550000;
+    const y = isTitleSlide ? 0 : 1600000 + i * 620000;
+    if (isTitleSlide) return '';
+    const bulletChar = isConclusion ? '\u2605' : '\u25CF';
+    const bulletColor = isConclusion ? 'e94560' : accentHex;
     return `
       <p:sp>
-        <p:nvSpPr><p:cNvPr id="${10 + i}" name="Content ${i + 1}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
+        <p:nvSpPr><p:cNvPr id="${10 + i}" name="Bullet ${i + 1}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
         <p:spPr>
           <a:xfrm>
-            <a:off x="800000" y="${y}"/>
-            <a:ext cx="7600000" cy="500000"/>
+            <a:off x="750000" y="${y}"/>
+            <a:ext cx="8200000" cy="520000"/>
           </a:xfrm>
+          <a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 8000"/></a:avLst></a:prstGeom>
+          <a:solidFill><a:srgbClr val="F8F9FA"/></a:solidFill>
+          <a:ln w="0"><a:noFill/></a:ln>
         </p:spPr>
         <p:txBody>
-          <a:bodyPr/>
+          <a:bodyPr wrap="square" lIns="120000" tIns="60000" rIns="120000" bIns="60000"/>
           <a:p>
-            <a:pPr>
+            <a:pPr indent="0" marL="0">
               <a:buFont typeface="Arial" panose="020B0604020202020204"/>
-              <a:buChar char="${isConclusion ? '★' : '●'}"/>
+              <a:buChar char="${bulletChar}"/>
             </a:pPr>
             <a:r>
-              <a:rPr lang="en-US" sz="2000" dirty="0">
+              <a:rPr lang="en-US" sz="1800" b="0" dirty="0">
+                <a:solidFill><a:srgbClr val="${bulletColor}"/></a:solidFill>
+              </a:rPr>
+              <a:t>  </a:t>
+            </a:r>
+            <a:r>
+              <a:rPr lang="en-US" sz="1800" dirty="0">
                 <a:solidFill><a:srgbClr val="333333"/></a:solidFill>
               </a:rPr>
-              <a:t>${escapeXml(line)}</a:t>
+              <a:t>${escapeXml(line.substring(0, 120))}</a:t>
             </a:r>
           </a:p>
         </p:txBody>
       </p:sp>`;
-  }).join('');
+  }).filter(Boolean).join('');
 
-  // Speaker notes shape
+  // Accent bar at top of content slides
+  const accentBar = !isTitleSlide ? `
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="98" name="AccentBar"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="100000"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:solidFill><a:srgbClr val="${accentHex}"/></a:solidFill>
+        </p:spPr>
+      </p:sp>` : '';
+
+  // Slide number
+  const slideNumber = `
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="99" name="SlideNum"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="4200000" y="6400000"/><a:ext cx="700000" cy="400000"/></a:xfrm>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr/>
+          <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="1000" dirty="0"><a:solidFill><a:srgbClr val="999999"/></a:solidFill></a:rPr><a:t>${index + 1} / ${totalSlides}</a:t></a:r></a:p>
+        </p:txBody>
+      </p:sp>`;
+
+  // Speaker notes
   const notesShape = slide.notes ? `
     <p:sp>
       <p:nvSpPr><p:cNvPr id="100" name="Notes"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-      <p:spPr>
-        <a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm>
-      </p:spPr>
+      <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm></p:spPr>
       <p:txBody>
         <a:bodyPr/>
         <a:p><a:r><a:rPr lang="en-US" sz="1200"/><a:t>${escapeXml(slide.notes)}</a:t></a:r></a:p>
@@ -294,52 +327,86 @@ function generateSlide(slide: PPTXSlideData, index: number, totalSlides: number)
        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <p:cSld>
     <p:bg>
-      <p:bgRef idx="1001"><a:schemeClr val="${isTitleSlide ? 'dk1' : 'lt1'}"/></p:bgRef>
+      <p:bgRef idx="1001"><a:solidFill><a:srgbClr val="${isTitleSlide ? '1a1a2e' : 'FFFFFF'}"/></a:solidFill></p:bgRef>
     </p:bg>
     <p:spTree>
       <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      ${accentBar}
       ${isTitleSlide ? `
+      <!-- Title slide background accent -->
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="50" name="BgAccent"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="0" y="4000000"/><a:ext cx="9144000" cy="3000000"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:solidFill><a:srgbClr val="${accentHex}"/></a:solidFill>
+        </p:spPr>
+      </p:sp>
+      <!-- Title -->
       <p:sp>
         <p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="ctrTitle"/></p:nvPr></p:nvSpPr>
         <p:spPr>
-          <a:xfrm><a:off x="600000" y="2200000"/><a:ext cx="7900000" cy="1600000"/></a:xfrm>
+          <a:xfrm><a:off x="600000" y="1800000"/><a:ext cx="7900000" cy="2000000"/></a:xfrm>
           <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
         </p:spPr>
         <p:txBody>
           <a:bodyPr/>
           <a:p>
             <a:pPr algn="ctr"/>
-            <a:r><a:rPr lang="en-US" sz="${titleSize}" b="1" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${escapeXml(slide.title)}</a:t></a:r>
+            <a:r><a:rPr lang="en-US" sz="4400" b="1" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${escapeXml(slide.title.substring(0, 60))}</a:t></a:r>
           </a:p>
         </p:txBody>
       </p:sp>
+      <!-- Subtitle -->
       <p:sp>
         <p:nvSpPr><p:cNvPr id="3" name="Subtitle"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr>
         <p:spPr>
-          <a:xfrm><a:off x="1500000" y="4200000"/><a:ext cx="6100000" cy="800000"/></a:xfrm>
+          <a:xfrm><a:off x="1200000" y="4300000"/><a:ext cx="6700000" cy="1000000"/></a:xfrm>
         </p:spPr>
         <p:txBody>
           <a:bodyPr/>
           <a:p>
             <a:pPr algn="ctr"/>
-            <a:r><a:rPr lang="en-US" sz="2000" dirty="0"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:rPr><a:t>${escapeXml(slide.content[0] || '')}</a:t></a:r>
+            <a:r><a:rPr lang="en-US" sz="2200" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${escapeXml((slide.content[0] || '').substring(0, 80))}</a:t></a:r>
           </a:p>
         </p:txBody>
+      </p:sp>
+      <!-- Date -->
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="4" name="Date"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="3200000" y="5600000"/><a:ext cx="2700000" cy="500000"/></a:xfrm>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr/>
+          <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="1400" dirty="0"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:rPr><a:t>${escapeXml(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))}</a:t></a:r></a:p>
+        </p:txBody>
       </p:sp>` : `
+      <!-- Content slide title -->
       <p:sp>
         <p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>
         <p:spPr>
-          <a:xfrm><a:off x="500000" y="300000"/><a:ext cx="8200000" cy="1000000"/></a:xfrm>
+          <a:xfrm><a:off x="500000" y="200000"/><a:ext cx="8200000" cy="1000000"/></a:xfrm>
           <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
         </p:spPr>
         <p:txBody>
           <a:bodyPr/>
           <a:p>
-            <a:r><a:rPr lang="en-US" sz="${titleSize}" b="1" dirty="0"><a:solidFill><a:srgbClr val="1a1a2e"/></a:solidFill></a:rPr><a:t>${escapeXml(slide.title)}</a:t></a:r>
+            <a:r><a:rPr lang="en-US" sz="3200" b="1" dirty="0"><a:solidFill><a:srgbClr val="${accentHex}"/></a:solidFill></a:rPr><a:t>${escapeXml(slide.title.substring(0, 60))}</a:t></a:r>
           </a:p>
         </p:txBody>
       </p:sp>
+      <!-- Accent underline -->
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="97" name="Underline"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="500000" y="1150000"/><a:ext cx="2000000" cy="60000"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:solidFill><a:srgbClr val="${accentHex}"/></a:solidFill>
+        </p:spPr>
+      </p:sp>
       ${contentShapes}`}
+      ${slideNumber}
       ${notesShape}
     </p:spTree>
   </p:cSld>

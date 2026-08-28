@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, Suspense } from "react";
 import { OutputPluginRegistry } from "@/lib/output-plugins";
+import { SAMPLE_DATA } from "@/lib/sample-data";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ProcessingOverlay, TRANSFORM_STEPS, PipelineStep } from "@/components/ProcessingOverlay";
 
@@ -999,10 +1000,28 @@ function DashboardContent() {
         setSourceContent((prev) => prev + " " + transcript);
       };
       recognition.onerror = () => setVoiceRecording(false);
-      recognition.onend = () => setVoiceRecording(false);
-      recognition.start();
+      recognition.onend = () => setVoiceRecording(false);      recognition.start();
     }
   };
+
+  const handleRandomPrompt = useCallback(() => {
+    const sample = SAMPLE_DATA[Math.floor(Math.random() * SAMPLE_DATA.length)];
+    setSourceContent(sample.content);
+    setSelectedOutputs(sample.suggestedOutputs as OutputType[]);
+    setTone(sample.suggestedConfig.tone as any);
+    setTargetAudience(sample.suggestedConfig.audiences[0] || '');
+    setDetailLevel(sample.suggestedConfig.detailLevel as any);
+    setCommunicationObjective(sample.suggestedConfig.objective);
+    setLanguage(sample.suggestedConfig.language);
+    addNotification({
+      type: 'request_created',
+      title: 'Demo Content Loaded',
+      message: `${sample.icon} ${sample.title} — ${sample.suggestedOutputs.length} outputs selected`,
+    });
+  }, [addNotification]);
+
+
+
 
   // PLACEHOLDER: The rest of the dashboard render (all tabs) goes here.
   // Due to file size, this is a truncated version. The full render from the
@@ -1087,6 +1106,9 @@ function DashboardContent() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h2 style={{ fontSize: '1.125rem', fontWeight: 700 }}>📝 Source Content</h2>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn-secondary" onClick={handleRandomPrompt} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.15))', borderColor: 'rgba(139,92,246,0.3)' }}>
+                      🎲 Demo Prompt
+                    </button>
                     <button className="btn-secondary" onClick={handleVoiceInput} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
                       {voiceRecording ? '⏹️ Stop' : '🎤 Voice Input'}
                     </button>

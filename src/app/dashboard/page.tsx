@@ -74,7 +74,7 @@ function DashboardInner() {
 
   const handleTransform = async () => {
     if (!sourceContent.trim()) { addNotification("Please enter source content", "error"); return; }
-    setProcessing(true); setPipelineStep(0); setShowResults(false);
+    setProcessing(true); setPipelineStep(0); setShowResults(false); const stepTimer = setInterval(() => setPipelineStep(prev => Math.min(prev + 1, 5)), 800);
     try {
       const res = await fetch("/api/transform", {
         method: "POST",
@@ -85,14 +85,20 @@ function DashboardInner() {
       if (data.success) { setResults(data.results || []); setShowResults(true); addNotification("Transformation complete!", "success"); }
       else { addNotification(data.error || "Transformation failed", "error"); }
     } catch { addNotification("Connection error", "error"); }
-    setProcessing(false);
+    clearInterval(stepTimer); setProcessing(false);
   };
 
   if (!user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#020617", color: "#94a3b8" }}>Loading...</div>;
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #020617 0%, #0f172a 50%, #0f172a 100%)", color: "#e2e8f0" }}>
-      {processing && <ProcessingOverlay step={pipelineStep} totalSteps={5} />}
+      {processing && <ProcessingOverlay isVisible={true} currentStep={pipelineStep} steps={[
+  { id: 'ingest', label: 'Ingesting', icon: '📄', detail: 'Processing source content', status: pipelineStep >= 1 ? 'done' : 'active' },
+  { id: 'analyze', label: 'Analyzing', icon: '🧠', detail: 'Running context engine', status: pipelineStep >= 2 ? 'done' : pipelineStep === 1 ? 'active' : 'pending' },
+  { id: 'generate', label: 'Generating', icon: '⚡', detail: 'Transforming content', status: pipelineStep >= 3 ? 'done' : pipelineStep === 2 ? 'active' : 'pending' },
+  { id: 'validate', label: 'Validating', icon: '🛡️', detail: 'Running security checks', status: pipelineStep >= 4 ? 'done' : pipelineStep === 3 ? 'active' : 'pending' },
+  { id: 'finalize', label: 'Finalizing', icon: '✅', detail: 'Preparing output', status: pipelineStep >= 5 ? 'done' : pipelineStep === 4 ? 'active' : 'pending' },
+]} />}
 
       {/* Nav */}
       <nav style={{ position: "sticky", top: 0, zIndex: 40, backdropFilter: "blur(20px)", background: "rgba(2,6,23,0.85)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>

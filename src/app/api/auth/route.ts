@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
       case "update_role": {
         const { userId, role, roleLevel } = body;
         if (!userId || !role) return NextResponse.json({ error: "userId and role required" }, { status: 400 });
-        const success = AuthService.updateUserRole(userId, role, roleLevel || 'employee');
+        const success = AuthService.updateUserRole(userId, role, roleLevel || 'general_scientist');
         return NextResponse.json({ success });
       }
 

@@ -629,7 +629,7 @@ export class AuthService {
   /**
    * Create a new user
    */
-  static createUser(username: string, displayName: string, role: PortalRole, roleLevel: RoleLevel = 'employee'): AuthUser | null {
+  static createUser(username: string, displayName: string, role: PortalRole, roleLevel: RoleLevel = 'general_scientist'): AuthUser | null {
     if (Array.from(users.values()).find(u => u.username === username)) return null;
     
     const id = `${role.substring(0, 2).toLowerCase()}-${String(users.size + 1).padStart(3, '0')}`;
@@ -738,7 +738,7 @@ export class AuthService {
           displayName: googleUser.name,
           email: googleUser.email,
           role: 'OPERATOR',
-          roleLevel: 'employee',
+          roleLevel: 'general_scientist',
           portalUrl: '/dashboard',
           permissions: PORTAL_CONFIG.OPERATOR.permissions,
           publicKey: keypair.publicKey,

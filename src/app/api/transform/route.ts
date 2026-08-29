@@ -107,17 +107,31 @@ export async function POST(request: NextRequest) {
 
       // ==================== CONTENT TRANSFORMATION ====================
       case "transform": {
-        const { content: rawContent, sourceContent, config } = body;
+        const { content: rawContent, sourceContent, outputTypes: rawOutputTypes, config: rawConfig } = body;
         const inputContent = rawContent || sourceContent || '';
         if (!inputContent || typeof inputContent !== 'string') {
           return NextResponse.json({ error: 'Content is required' }, { status: 400 });
         }
 
+        // Build TransformationConfig from the frontend's flat fields
+        const outputTypes = Array.isArray(rawOutputTypes) && rawOutputTypes.length > 0
+          ? rawOutputTypes
+          : ['linkedin'];
+        const cfg = {
+          outputTypes,
+          targetAudience: rawConfig?.audience || 'general',
+          tone: rawConfig?.tone || 'formal',
+          language: rawConfig?.language || 'en',
+          detailLevel: rawConfig?.detail || 'standard',
+          communicationObjective: rawConfig?.objective || 'inform',
+          contentStyle: 'professional',
+        };
+
         // Pre-sanitize content for prompt injection
         const sanitizeResult = PromptSanitizer.sanitize(inputContent);
         const safeContent = sanitizeResult.safe ? sanitizeResult.sanitizedContent : inputContent;
 
-        const result = await ContentTransformer.transform(safeContent, config);
+        const result = await ContentTransformer.transform(safeContent, cfg);
 
         // Record on blockchain
         const sourceHash = blockchain.constructor === Object
@@ -127,7 +141,7 @@ export async function POST(request: NextRequest) {
         const blockchainRecord = await blockchain.recordTransformation(
           inputContent,
           JSON.stringify(result.results),
-          config.outputTypes.join(", "),
+          cfg.outputTypes.join(", "),
           "operator",
           "LOW"
         );
@@ -146,9 +160,9 @@ export async function POST(request: NextRequest) {
           actorRole: "SYSTEM",
           targetId: result.id,
           targetType: "TRANSFORMATION",
-          action: `Transformation completed - ${config.outputTypes.length} outputs generated`,
+          action: `Transformation completed - ${cfg.outputTypes.length} outputs generated`,
           details: {
-            outputs: config.outputTypes,
+            outputs: cfg.outputTypes,
             consistencyScore: result.consistencyScore,
             blockchainId: blockchainRecord.id,
           },
@@ -158,7 +172,7 @@ export async function POST(request: NextRequest) {
           blockchainTxHash: blockchainRecord.id,
         });
 
-        return NextResponse.json(result);
+        return NextResponse.json({ success: true, ...result });
       }
 
       // ==================== TRANSLATION ====================

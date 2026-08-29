@@ -154,7 +154,7 @@ function DashboardInner() {
               <div style={{ marginTop: "1rem" }}>
                 <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.5rem", fontWeight: 600 }}>Output Formats</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                  {["linkedin", "twitter", "advisory", "executive", "presentation", "infographic", "video_script", "crisis"].map(type => (
+                  {["linkedin", "twitter", "advisory", "executive_summary", "presentation", "infographic", "video", "crisis_response"].map(type => (
                     <button key={type} onClick={() => setSelectedOutputs(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type])} style={{ padding: "0.4rem 0.8rem", borderRadius: 6, border: "1px solid " + (selectedOutputs.includes(type) ? "#3b82f6" : "rgba(255,255,255,0.08)"), background: selectedOutputs.includes(type) ? "rgba(59,130,246,0.15)" : "transparent", color: selectedOutputs.includes(type) ? "#3b82f6" : "#94a3b8", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>
                       {type.replace("_", " ")}
                     </button>

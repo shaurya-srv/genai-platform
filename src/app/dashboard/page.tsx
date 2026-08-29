@@ -54,9 +54,45 @@ function DashboardInner() {
   const [transformMedia, setTransformMedia] = useState<any>(null);
   const [imageLoadStates, setImageLoadStates] = useState<Record<string, boolean | 'error'>>({});
   const [pptxDownloading, setPptxDownloading] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
 
   const markImageLoaded = (url: string) => setImageLoadStates(prev => ({ ...prev, [url]: true }));
   const markImageError = (url: string) => setImageLoadStates(prev => ({ ...prev, [url]: 'error' }));
+
+  // Video playback auto-advance
+  useEffect(() => {
+    if (!videoPlaying || !transformMedia?.video?.scenes?.length) return;
+    const scenes = transformMedia.video.scenes;
+    const sceneDuration = (scenes[currentSceneIndex]?.duration || 4000);
+    const timer = setTimeout(() => {
+      if (currentSceneIndex < scenes.length - 1) {
+        setCurrentSceneIndex(prev => prev + 1);
+      } else {
+        setVideoPlaying(false);
+        setCurrentSceneIndex(0);
+      }
+    }, sceneDuration);
+    return () => clearTimeout(timer);
+  }, [videoPlaying, currentSceneIndex, transformMedia]);
+
+  // Keyboard shortcuts for video playback
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!transformMedia?.video?.scenes?.length) return;
+      const scenes = transformMedia.video.scenes;
+      if (e.key === 'ArrowRight') {
+        setCurrentSceneIndex(prev => Math.min(prev + 1, scenes.length - 1));
+      } else if (e.key === 'ArrowLeft') {
+        setCurrentSceneIndex(prev => Math.max(prev - 1, 0));
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        setVideoPlaying(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [transformMedia]);
 
   // Generation Hub state
   const [genPrompt, setGenPrompt] = useState("");
@@ -158,7 +194,7 @@ function DashboardInner() {
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #020617 0%, #0f172a 50%, #0f172a 100%)", color: "#e2e8f0" }}>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }`}</style>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
       {processing && <ProcessingOverlay isVisible={true} currentStep={pipelineStep} steps={[
   { id: 'ingest', label: 'Ingesting', icon: '📄', detail: 'Reading source content', status: pipelineStep >= 1 ? 'done' : 'active' },
   { id: 'analyze', label: 'Analyzing', icon: '🧠', detail: 'Running DLP scan & threat analysis', status: pipelineStep >= 2 ? 'done' : pipelineStep === 1 ? 'active' : 'pending' },
@@ -423,41 +459,118 @@ function DashboardInner() {
                         </div>
                       )}
 
-                      {/* Video Storyboard */}
-                      {transformMedia.video?.scenes?.length > 0 && (
+                      {/* Video Storyboard Player */}
+                      {transformMedia.video?.scenes?.length > 0 && (() => {
+                        const scenes = transformMedia.video.scenes;
+                        const activeScene = scenes[currentSceneIndex];
+                        const totalDuration = scenes.reduce((sum: number, s: any) => sum + (s.duration || 4000), 0);
+                        const elapsedBefore = scenes.slice(0, currentSceneIndex).reduce((sum: number, s: any) => sum + (s.duration || 4000), 0);
+                        const progress = ((elapsedBefore + ((activeScene?.duration || 4000) / 2)) / totalDuration) * 100;
+                        return (
                         <div style={{ marginBottom: '1.25rem', padding: '1rem', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.75rem' }}>🎬 Video Storyboard — {transformMedia.video.scenes.length} scenes</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
-                            {transformMedia.video.scenes.map((scene: any, si: number) => {
-                              const sceneLoaded = imageLoadStates[scene.imageUrl];
+                          {/* Header */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>🎬 Video Storyboard — {scenes.length} scenes</div>
+                            <div style={{ fontSize: '0.6rem', color: '#64748b' }}>{totalDuration / 1000}s total • Space to play/pause • ← → to navigate</div>
+                          </div>
+
+                          {/* Main scene viewer */}
+                          <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: 'rgba(0,0,0,0.3)', aspectRatio: '16/9', maxHeight: 360 }}>
+                            {/* Scene image with fade transition */}
+                            <img
+                              src={activeScene.imageUrl}
+                              alt={`Scene ${activeScene.sceneNumber}`}
+                              key={currentSceneIndex}
+                              onLoad={() => markImageLoaded(activeScene.imageUrl)}
+                              onError={() => markImageError(activeScene.imageUrl)}
+                              style={{
+                                width: '100%', height: '100%', objectFit: 'cover',
+                                opacity: imageLoadStates[activeScene.imageUrl] === true ? 1 : 0.3,
+                                transition: 'opacity 0.5s ease-in-out',
+                              }}
+                            />
+                            {/* Gradient overlay at bottom */}
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: 'linear-gradient(transparent, rgba(0,0,0,0.85))' }} />
+                            {/* Scene number badge */}
+                            <div style={{ position: 'absolute', top: 12, left: 12, padding: '0.3rem 0.7rem', borderRadius: 6, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', color: '#fff', fontSize: '0.7rem', fontWeight: 700 }}>
+                              Scene {activeScene.sceneNumber} / {scenes.length}
+                            </div>
+                            {/* Narration text overlay */}
+                            <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}>
+                              <div style={{ fontSize: '0.85rem', color: '#f1f5f9', lineHeight: 1.5, textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>
+                                {activeScene.narration || ''}
+                              </div>
+                            </div>
+                            {/* Loading spinner for scene image */}
+                            {imageLoadStates[activeScene.imageUrl] !== true && imageLoadStates[activeScene.imageUrl] !== 'error' && (
+                              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+                                <div style={{ width: 36, height: 36, border: '3px solid rgba(236,72,153,0.3)', borderTopColor: '#ec4899', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Playback controls */}
+                          <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {/* Prev button */}
+                            <button onClick={() => { setVideoPlaying(false); setCurrentSceneIndex(prev => Math.max(prev - 1, 0)); }} disabled={currentSceneIndex === 0} style={{ width: 32, height: 32, borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: currentSceneIndex === 0 ? '#475569' : '#f1f5f9', fontSize: '0.8rem', cursor: currentSceneIndex === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⏮</button>
+                            {/* Play/Pause button */}
+                            <button onClick={() => {
+                              if (videoPlaying) {
+                                setVideoPlaying(false);
+                              } else {
+                                if (currentSceneIndex === scenes.length - 1) setCurrentSceneIndex(0);
+                                setVideoPlaying(true);
+                              }
+                            }} style={{ width: 40, height: 40, borderRadius: 8, border: 'none', background: videoPlaying ? 'rgba(236,72,153,0.2)' : 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: '#fff', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{videoPlaying ? '⏸' : '▶️'}</button>
+                            {/* Next button */}
+                            <button onClick={() => { setVideoPlaying(false); setCurrentSceneIndex(prev => Math.min(prev + 1, scenes.length - 1)); }} disabled={currentSceneIndex === scenes.length - 1} style={{ width: 32, height: 32, borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: currentSceneIndex === scenes.length - 1 ? '#475569' : '#f1f5f9', fontSize: '0.8rem', cursor: currentSceneIndex === scenes.length - 1 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⏭</button>
+                            {/* Time display */}
+                            <span style={{ fontSize: '0.65rem', color: '#64748b', minWidth: 60 }}>{(elapsedBefore / 1000).toFixed(1)}s / {(totalDuration / 1000).toFixed(1)}s</span>
+                            <div style={{ flex: 1 }} />
+                            {/* Scene dots / filmstrip */}
+                            <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                              {scenes.map((_: any, si: number) => (
+                                <button key={si} onClick={() => { setVideoPlaying(false); setCurrentSceneIndex(si); }} style={{ width: si === currentSceneIndex ? 24 : 10, height: 10, borderRadius: 5, border: 'none', background: si === currentSceneIndex ? '#ec4899' : si < currentSceneIndex ? 'rgba(236,72,153,0.4)' : 'rgba(255,255,255,0.15)', cursor: 'pointer', transition: 'all 0.2s', padding: 0 }} title={`Scene ${si + 1}`} />
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Timeline progress bar */}
+                          <div style={{ marginTop: '0.5rem', position: 'relative', height: 28 }}>
+                            <div style={{ position: 'absolute', top: 10, left: 0, right: 0, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                              <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg, #ec4899, #8b5cf6)', borderRadius: 3, transition: 'width 0.3s ease' }} />
+                            </div>
+                            {/* Scene markers on timeline */}
+                            {scenes.map((scene: any, si: number) => {
+                              const sceneStart = scenes.slice(0, si).reduce((sum: number, s: any) => sum + (s.duration || 4000), 0);
+                              const pos = (sceneStart / totalDuration) * 100;
                               return (
-                                <div key={si} style={{ borderRadius: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                                  <div style={{ position: 'relative' }}>
-                                    {sceneLoaded !== true && sceneLoaded !== 'error' ? (
-                                      <div style={{ width: '100%', height: 120, background: `linear-gradient(135deg, rgba(59,130,246,0.1), rgba(236,72,153,0.1))`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.3rem' }}>
-                                        <div style={{ width: 20, height: 20, border: '2px solid rgba(236,72,153,0.3)', borderTopColor: '#ec4899', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                                        <div style={{ fontSize: '0.55rem', color: '#94a3b8' }}>Scene {scene.sceneNumber}</div>
-                                      </div>
-                                    ) : sceneLoaded === 'error' ? (
-                                      <div style={{ width: '100%', height: 120, background: 'rgba(239,68,68,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.2rem' }}>
-                                        <div style={{ fontSize: '1rem' }}>⚠️</div>
-                                        <div style={{ fontSize: '0.55rem', color: '#ef4444' }}>Failed</div>
-                                      </div>
-                                    ) : (
-                                      <img src={scene.imageUrl} alt={`Scene ${scene.sceneNumber}`} style={{ width: '100%', height: 120, objectFit: 'cover' }} />
-                                    )}
-                                    <div style={{ position: 'absolute', top: 6, left: 6, padding: '0.15rem 0.4rem', borderRadius: 4, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.6rem', fontWeight: 700 }}>Scene {scene.sceneNumber}</div>
-                                    <div style={{ position: 'absolute', top: 6, right: 6, padding: '0.15rem 0.4rem', borderRadius: 4, background: 'rgba(236,72,153,0.8)', color: '#fff', fontSize: '0.55rem' }}>{(scene.duration || 4000) / 1000}s</div>
-                                  </div>
-                                  <div style={{ padding: '0.4rem 0.6rem' }}>
-                                    <p style={{ fontSize: '0.65rem', color: '#94a3b8', lineHeight: 1.3, margin: 0 }}>{(scene.narration || '').substring(0, 120)}</p>
-                                  </div>
+                                <div key={si} onClick={() => { setVideoPlaying(false); setCurrentSceneIndex(si); }} style={{ position: 'absolute', left: `${pos}%`, top: 4, width: 2, height: 18, background: si <= currentSceneIndex ? '#ec4899' : 'rgba(255,255,255,0.15)', cursor: 'pointer', transition: 'background 0.2s' }} title={`Scene ${si + 1}: ${scene.narration?.substring(0, 40)}`} />
+                              );
+                            })}
+                          </div>
+
+                          {/* Thumbnail strip */}
+                          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+                            {scenes.map((scene: any, si: number) => {
+                              const isLoaded = imageLoadStates[scene.imageUrl] === true;
+                              const isActive = si === currentSceneIndex;
+                              return (
+                                <div key={si} onClick={() => { setVideoPlaying(false); setCurrentSceneIndex(si); }} style={{ minWidth: 80, cursor: 'pointer', borderRadius: 6, overflow: 'hidden', border: isActive ? '2px solid #ec4899' : '2px solid transparent', opacity: isActive ? 1 : 0.6, transition: 'all 0.2s', flexShrink: 0 }}>
+                                  {isLoaded ? (
+                                    <img src={scene.imageUrl} alt={`Scene ${scene.sceneNumber}`} style={{ width: 80, height: 45, objectFit: 'cover', display: 'block' }} />
+                                  ) : (
+                                    <div style={{ width: 80, height: 45, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <div style={{ width: 12, height: 12, border: '2px solid rgba(236,72,153,0.3)', borderTopColor: '#ec4899', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Presentation Download */}
                       {transformMedia.presentation && (

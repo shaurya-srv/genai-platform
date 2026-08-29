@@ -160,7 +160,7 @@ function LoginPageInner() {
           <div style={{ fontSize: "0.65rem", color: "#64748b", marginBottom: "0.4rem", fontWeight: 600 }}>Demo Accounts (password: ntro123)</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.2rem" }}>
             {["chairman", "scientist_g", "scientist_d", "scientist"].map(u => (
-              <div key={u} onClick={() => { setUsername(u); setPassword("ntro123"); }} style={{ fontSize: "0.6rem", color: "#94a3b8", cursor: "pointer", padding: "0.15rem 0.4rem", borderRadius: 4 }} onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"} onMouseLeave={e => e.currentTarget.style.background = "transparent" }}>{u}</div>
+              <div key={u} onClick={() => { setUsername(u); setPassword('ntro123'); }} style={{ fontSize: '0.6rem', color: '#94a3b8', cursor: 'pointer', padding: '0.15rem 0.4rem', borderRadius: 4 }} onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>{u}</div>
             ))}
           </div>
         </div>

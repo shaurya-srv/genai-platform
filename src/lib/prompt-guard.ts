@@ -157,7 +157,7 @@ export class PromptSanitizer {
    */
   static sanitize(content: string): SanitizeResult {
     const threats: SanitizeThreat[] = [];
-    let sanitizedContent = content;
+    let sanitizedContent = content || '';
 
     for (const rule of INJECTION_PATTERNS) {
       for (const pattern of rule.patterns) {

@@ -107,7 +107,11 @@ export async function POST(request: NextRequest) {
 
       // ==================== CONTENT TRANSFORMATION ====================
       case "transform": {
-        const { content, config } = body;
+        const { content: rawContent, sourceContent, config } = body;
+        const content = rawContent || sourceContent;
+        if (!content || typeof content !== 'string') {
+          return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+        }
 
         // Pre-sanitize content for prompt injection
         const sanitizeResult = PromptSanitizer.sanitize(content);

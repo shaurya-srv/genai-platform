@@ -50,6 +50,7 @@ function DashboardInner() {
   const [showResults, setShowResults] = useState(false);
   const [config, setConfig] = useState({ audience: "general", tone: "formal", language: "en", detail: "standard", objective: "inform" });
   const [notifications, setNotifications] = useState<{id: string; msg: string; type: string}[]>([]);
+  const [transformMedia, setTransformMedia] = useState<any>(null);
 
   // Generation Hub state
   const [genPrompt, setGenPrompt] = useState("");
@@ -91,7 +92,7 @@ function DashboardInner() {
         body: JSON.stringify({ action: "transform", sourceContent, outputTypes: selectedOutputs, config, userId: user?.userId }),
       });
       const data = await res.json();
-      if (data.success) { setResults(data.results || []); setShowResults(true); addNotification("Transformation complete!", "success"); }
+      if (data.success) { setResults(data.results || []); setTransformMedia(data.media || null); setShowResults(true); addNotification("Transformation complete!", "success"); }
       else { addNotification(data.error || "Transformation failed", "error"); }
     } catch { addNotification("Connection error", "error"); }
     clearInterval(stepTimer); setProcessing(false);
@@ -262,13 +263,75 @@ function DashboardInner() {
                         {r.metadata && (
                           <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
                             {Object.entries(r.metadata).map(([k, v]) => (
-                              <span key={k} style={{ fontSize: "0.6rem", padding: "0.15rem 0.4rem", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "#64748b" }}>{k}: {String(v)}</span>
+                              <span key={k} style={{ fontSize: "0.6rem", padding: "0.15rem 0.4rem", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "#64748b" }}>{k}: {Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
                             ))}
                           </div>
                         )}
                       </details>
                     ))}
                   </div>
+
+                  {/* === GENERATED MEDIA === */}
+                  {transformMedia && (
+                    <div style={{ marginTop: '1.5rem' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ec4899', marginBottom: '1rem' }}>🎨 Generated Media</div>
+
+                      {/* AI Image Preview */}
+                      {transformMedia.image?.url && (
+                        <div style={{ marginBottom: '1.25rem', padding: '1rem', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>🖼️ AI Generated Image</div>
+                          <img src={transformMedia.image.url} alt="AI generated" style={{ width: '100%', maxWidth: 600, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)' }} />
+                          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                            <a href={transformMedia.image.url} target="_blank" rel="noopener noreferrer" style={{ padding: '0.4rem 1rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#94a3b8', fontSize: '0.75rem', textDecoration: 'none' }}>↗️ Open Full Size</a>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Video Storyboard */}
+                      {transformMedia.video?.scenes?.length > 0 && (
+                        <div style={{ marginBottom: '1.25rem', padding: '1rem', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.75rem' }}>🎬 Video Storyboard — {transformMedia.video.scenes.length} scenes</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                            {transformMedia.video.scenes.map((scene: any, si: number) => (
+                              <div key={si} style={{ borderRadius: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                                <div style={{ position: 'relative' }}>
+                                  <img src={scene.imageUrl} alt={`Scene ${scene.sceneNumber}`} style={{ width: '100%', height: 120, objectFit: 'cover' }} />
+                                  <div style={{ position: 'absolute', top: 6, left: 6, padding: '0.15rem 0.4rem', borderRadius: 4, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.6rem', fontWeight: 700 }}>Scene {scene.sceneNumber}</div>
+                                  <div style={{ position: 'absolute', top: 6, right: 6, padding: '0.15rem 0.4rem', borderRadius: 4, background: 'rgba(236,72,153,0.8)', color: '#fff', fontSize: '0.55rem' }}>{(scene.duration || 4000) / 1000}s</div>
+                                </div>
+                                <div style={{ padding: '0.4rem 0.6rem' }}>
+                                  <p style={{ fontSize: '0.65rem', color: '#94a3b8', lineHeight: 1.3, margin: 0 }}>{(scene.narration || '').substring(0, 120)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Presentation Download */}
+                      {transformMedia.presentation && (
+                        <div style={{ marginBottom: '1.25rem', padding: '1rem', borderRadius: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                          <div style={{ fontSize: '2rem' }}>📊</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981' }}>{transformMedia.presentation.fileName}</div>
+                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.15rem' }}>{transformMedia.presentation.slideCount} slides • Ready to download</div>
+                          </div>
+                          <button onClick={() => {
+                            const base64 = transformMedia.presentation.base64;
+                            const binary = atob(base64);
+                            const bytes = new Uint8Array(binary.length);
+                            for (let bi = 0; bi < binary.length; bi++) bytes[bi] = binary.charCodeAt(bi);
+                            const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url; a.download = transformMedia.presentation.fileName;
+                            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                          }} style={{ padding: '0.5rem 1.5rem', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #10b981, #06b6d4)', color: '#fff', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>⬇️ Download PPTX</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

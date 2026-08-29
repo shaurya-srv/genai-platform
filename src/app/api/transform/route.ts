@@ -133,6 +133,85 @@ export async function POST(request: NextRequest) {
 
         const result = await ContentTransformer.transform(safeContent, cfg);
 
+        // ========== GENERATE ADDITIONAL MEDIA ==========
+        // Build a descriptive prompt from the source content for image/video generation
+        const mediaPrompt = inputContent
+          .split(/[.!?\n]+/)
+          .filter((s: string) => s.trim().length > 10)
+          .slice(0, 3)
+          .join('. ')
+          .substring(0, 200);
+
+        // 1) AI Image via Pollinations.ai (free, no key)
+        const imageSeed = Math.floor(Math.random() * 999999);
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+          `Professional infographic about: ${mediaPrompt}, cinematic lighting, high quality, 4k`
+        )}?width=1024&height=576&nologo=true&seed=${imageSeed}`;
+
+        // 2) Video storyboard (4 scenes via Pollinations.ai)
+        const sentences = inputContent
+          .split(/[.!?\n]+/)
+          .filter((s: string) => s.trim().length > 10);
+        const videoScenes = Array.from({ length: 4 }, (_, i) => {
+          const sentence = sentences[i % sentences.length] || mediaPrompt;
+          const sceneSeed = Math.floor(Math.random() * 999999);
+          return {
+            sceneNumber: i + 1,
+            imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(
+              `Cinematic scene: ${sentence.substring(0, 120)}, dramatic lighting, film still, 4k`
+            )}?width=1024&height=576&nologo=true&seed=${sceneSeed}`,
+            narration: sentence.substring(0, 150),
+            duration: 4000,
+          };
+        });
+
+        // 3) Presentation PPTX (binary -> base64 for JSON transport)
+        let pptxBase64 = '';
+        let pptxFileName = '';
+        let pptxSlideCount = 0;
+        try {
+          // Build slides from the source content
+          const paragraphs = inputContent.split(/\n\n+/).filter((p: string) => p.trim().length > 5);
+          const pptxSlides: Array<{ title: string; content: string[]; notes: string; layout: 'title' | 'content' | 'conclusion'; accentColor: string }> = [];
+          const titleText = inputContent.split('\n')[0]?.trim().substring(0, 60) || 'Presentation';
+          const color = cfg.tone === 'urgent' ? 'e94560' : cfg.tone === 'formal' ? '0f3460' : '3b82f6';
+
+          pptxSlides.push({
+            title: titleText,
+            content: [cfg.targetAudience || 'General Audience', new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })],
+            notes: 'Title slide',
+            layout: 'title',
+            accentColor: '1a1a2e',
+          });
+
+          const sourceForSlides = paragraphs.length > 2 ? paragraphs : sentences;
+          const bullets = sourceForSlides.slice(0, 16).map((s: string) => s.trim().substring(0, 120));
+          for (let i = 0; i < bullets.length; i += 4) {
+            pptxSlides.push({
+              title: `Key Details ${pptxSlides.length > 1 ? '(continued)' : ''}`,
+              content: bullets.slice(i, i + 4).map((b: string) => b.replace(/^[-•*\d.]+\s*/, '')),
+              notes: 'Elaborate on each point.',
+              layout: 'content',
+              accentColor: color,
+            });
+          }
+
+          pptxSlides.push({
+            title: 'Summary & Next Steps',
+            content: sentences.slice(0, 3).map((s: string, i: number) => `${i + 1}. ${s.trim().substring(0, 100)}`),
+            notes: 'Summarize.',
+            layout: 'conclusion',
+            accentColor: 'e94560',
+          });
+
+          const pptxResult = await generatePPTXFile(pptxSlides, titleText);
+          pptxBase64 = pptxResult.buffer.toString('base64');
+          pptxFileName = pptxResult.fileName;
+          pptxSlideCount = pptxResult.slideCount;
+        } catch (pptxErr) {
+          console.error('PPTX generation failed:', pptxErr);
+        }
+
         // Record on blockchain
         const sourceHash = blockchain.constructor === Object
           ? require("@/lib/blockchain").blockchain.constructor.hashContent(inputContent)
@@ -172,7 +251,18 @@ export async function POST(request: NextRequest) {
           blockchainTxHash: blockchainRecord.id,
         });
 
-        return NextResponse.json({ success: true, ...result });
+        return NextResponse.json({
+          success: true,
+          ...result,
+          // Additional media
+          media: {
+            image: { url: imageUrl, prompt: mediaPrompt },
+            video: { scenes: videoScenes, totalDuration: videoScenes.length * 4000 },
+            presentation: pptxBase64
+              ? { base64: pptxBase64, fileName: pptxFileName, slideCount: pptxSlideCount }
+              : null,
+          },
+        });
       }
 
       // ==================== TRANSLATION ====================

@@ -17,10 +17,21 @@ function LoginPageInner() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [challengeId, setChallengeId] = useState("");
 
-  // Step 1: Google sign-in
+  // Step 1: Google sign-in — redirect to Google OAuth or use demo mode
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true); setError("");
     try {
+      // Check if Google OAuth is configured (real credentials in .env.local)
+      const googleRes = await fetch("/api/auth/google");
+      const googleData = await googleRes.json();
+
+      if (googleData.mode === "real" && googleData.url) {
+        // Real Google OAuth — redirect to Google's consent screen
+        window.location.href = googleData.url;
+        return; // Page will navigate away
+      }
+
+      // Demo mode — simulate Google auth with the existing endpoint
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

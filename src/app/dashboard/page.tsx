@@ -9,6 +9,7 @@ interface SectionDef { id: string; name: string; icon: string; color: string; mi
 
 const ALL_SECTIONS: SectionDef[] = [
   { id: "transform", name: "Transformation AI", icon: "🤖", color: "#3b82f6", minLevel: 1, description: "Multi-source input to multi-format output" },
+  { id: "generate", name: "Generation Hub", icon: "🎨", color: "#ec4899", minLevel: 1, description: "AI image, video & presentation generation" },
   { id: "approval", name: "Multi-Sign Approval", icon: "✍️", color: "#10b981", minLevel: 1, description: "Approval chain for content publication" },
   { id: "analysis", name: "Analysis & Review", icon: "📊", color: "#06b6d4", minLevel: 3, description: "Consistency scoring and quality metrics" },
   { id: "threat", name: "Threat Analysis", icon: "🔍", color: "#ef4444", minLevel: 3, description: "STIX/TAXII threat intelligence" },
@@ -50,6 +51,14 @@ function DashboardInner() {
   const [config, setConfig] = useState({ audience: "general", tone: "formal", language: "en", detail: "standard", objective: "inform" });
   const [notifications, setNotifications] = useState<{id: string; msg: string; type: string}[]>([]);
 
+  // Generation Hub state
+  const [genPrompt, setGenPrompt] = useState("");
+  const [genType, setGenType] = useState<"image" | "video" | "presentation">("image");
+  const [genStyle, setGenStyle] = useState("cinematic");
+  const [genLoading, setGenLoading] = useState(false);
+  const [genResult, setGenResult] = useState<any>(null);
+  const [genImages, setGenImages] = useState<string[]>([]);
+
   useEffect(() => {
     const uid = searchParams.get("userId");
     const stored = localStorage.getItem("auth_user");
@@ -86,6 +95,56 @@ function DashboardInner() {
       else { addNotification(data.error || "Transformation failed", "error"); }
     } catch { addNotification("Connection error", "error"); }
     clearInterval(stepTimer); setProcessing(false);
+  };
+
+  const handleGenerate = async () => {
+    if (!genPrompt.trim()) { addNotification("Please enter a prompt", "error"); return; }
+    setGenLoading(true); setGenResult(null); setGenImages([]);
+    try {
+      if (genType === "image") {
+        const res = await fetch("/api/generate/image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: genPrompt, width: 1024, height: 1024, userId: user?.userId }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setGenResult(data);
+          setGenImages([data.url]);
+          addNotification("Image generated!", "success");
+        } else { addNotification(data.error || "Image generation failed", "error"); }
+      } else if (genType === "video") {
+        const res = await fetch("/api/generate/video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: genPrompt, sceneCount: 4, style: genStyle, userId: user?.userId }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setGenResult(data.storyboard);
+          setGenImages(data.storyboard.scenes.map((s: any) => s.imageUrl));
+          addNotification(`Video storyboard: ${data.storyboard.scenes.length} scenes`, "success");
+        } else { addNotification(data.error || "Video generation failed", "error"); }
+      } else if (genType === "presentation") {
+        const res = await fetch("/api/generate/presentation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: genPrompt, title: genPrompt.split("\n")[0]?.substring(0, 60) || "Presentation", style: genStyle === "cinematic" ? "corporate" : genStyle, userId: user?.userId }),
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = res.headers.get("Content-Disposition")?.match(/filename=\"(.+?)\"/)?.[1] || "presentation.pptx";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          setGenResult({ type: "pptx", downloaded: true, slideCount: res.headers.get("X-Slide-Count") });
+          addNotification(`Presentation downloaded (${res.headers.get("X-Slide-Count")} slides)`, "success");
+        } else { addNotification("Presentation generation failed", "error"); }
+      }
+    } catch { addNotification("Connection error", "error"); }
+    setGenLoading(false);
   };
 
   if (!user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#020617", color: "#94a3b8" }}>Loading...</div>;
@@ -210,6 +269,91 @@ function DashboardInner() {
                       </details>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* GENERATION HUB SECTION */}
+          {activeSection === "generate" && (
+            <div>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#ec4899", marginBottom: "1rem" }}>🎨 Generation Hub</h2>
+              <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "1rem" }}>Generate AI images, video storyboards, and presentations from text prompts.</p>
+
+              {/* Generation Type Selector */}
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+                {[{ id: "image" as const, label: "🖼️ Image", desc: "AI-generated image" }, { id: "video" as const, label: "🎬 Video", desc: "Animated storyboard" }, { id: "presentation" as const, label: "📊 Presentation", desc: "Downloadable PPTX" }].map(t => (
+                  <button key={t.id} onClick={() => { setGenType(t.id); setGenResult(null); setGenImages([]); }} style={{ padding: "0.75rem 1.25rem", borderRadius: 10, border: "1px solid " + (genType === t.id ? "#ec4899" : "rgba(255,255,255,0.08)"), background: genType === t.id ? "rgba(236,72,153,0.15)" : "rgba(255,255,255,0.03)", color: genType === t.id ? "#ec4899" : "#94a3b8", cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>{t.label}</div>
+                    <div style={{ fontSize: "0.65rem", opacity: 0.7, marginTop: 2 }}>{t.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Prompt Input */}
+              <textarea value={genPrompt} onChange={e => setGenPrompt(e.target.value)} placeholder={genType === "image" ? "Describe the image you want to generate..." : genType === "video" ? "Describe the video content — each sentence becomes a scene..." : "Paste your content here — it will be converted to slides..."} style={{ width: "100%", minHeight: 100, padding: "1rem", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", color: "#f1f5f9", fontSize: "0.85rem", resize: "vertical", outline: "none" }} />
+
+              {/* Style + Generate Button Row */}
+              <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "1rem" }}>
+                <div>
+                  <div style={{ fontSize: "0.65rem", color: "#64748b", marginBottom: "0.25rem" }}>Style</div>
+                  <select value={genStyle} onChange={e => setGenStyle(e.target.value)} style={{ padding: "0.5rem 0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.05)", color: "#f1f5f9", fontSize: "0.8rem" }}>
+                    {genType === "image" && <><option value="cinematic">Cinematic</option><option value="professional">Professional</option><option value="animated">Animated</option><option value="futuristic">Futuristic</option></>}
+                    {genType === "video" && <><option value="cinematic">Cinematic</option><option value="professional">Professional</option><option value="documentary">Documentary</option><option value="animated">Animated</option><option value="futuristic">Futuristic</option></>}
+                    {genType === "presentation" && <><option value="corporate">Corporate</option><option value="modern">Modern</option><option value="academic">Academic</option><option value="creative">Creative</option></>}
+                  </select>
+                </div>
+                <button onClick={handleGenerate} disabled={genLoading} style={{ marginTop: "1rem", padding: "0.75rem 2rem", borderRadius: 10, border: "none", background: genLoading ? "#475569" : "linear-gradient(135deg, #ec4899, #8b5cf6)", color: "#fff", fontSize: "0.9rem", fontWeight: 700, cursor: genLoading ? "not-allowed" : "pointer", opacity: genLoading ? 0.7 : 1 }}>{genLoading ? "⏳ Generating..." : genType === "image" ? "🖼️ Generate Image" : genType === "video" ? "🎬 Generate Video" : "📊 Generate Presentation"}</button>
+              </div>
+
+              {/* Results Display */}
+              {genImages.length > 0 && (
+                <div style={{ marginTop: "1.5rem" }}>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ec4899", marginBottom: "0.75rem" }}>✅ Generated {genImages.length} {genType === "image" ? "image" : genType === "video" ? "scene(s)" : "slides"}</div>
+
+                  {/* Image results */}
+                  {genType === "image" && genImages.map((url, i) => (
+                    <div key={i} style={{ marginBottom: "1rem" }}>
+                      <img src={url} alt={genPrompt} style={{ width: "100%", maxWidth: 512, borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)" }} />
+                      <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
+                        <a href={url} target="_blank" rel="noopener noreferrer" style={{ padding: "0.4rem 1rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: "0.75rem", textDecoration: "none" }}>↗️ Open Full Size</a>
+                        <button onClick={() => { const a = document.createElement("a"); a.href = url; a.download = `ai-image-${Date.now()}.png`; a.click(); }} style={{ padding: "0.4rem 1rem", borderRadius: 6, border: "1px solid rgba(236,72,153,0.3)", background: "rgba(236,72,153,0.1)", color: "#ec4899", fontSize: "0.75rem", cursor: "pointer" }}>⬇️ Save</button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Video storyboard results */}
+                  {genType === "video" && genResult?.scenes && (
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "1rem" }}>
+                        {genResult.scenes.map((scene: any, i: number) => (
+                          <div key={i} style={{ borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                            <div style={{ position: "relative" }}>
+                              <img src={scene.imageUrl} alt={`Scene ${scene.sceneNumber}`} style={{ width: "100%", height: 140, objectFit: "cover" }} />
+                              <div style={{ position: "absolute", top: 8, left: 8, padding: "0.2rem 0.5rem", borderRadius: 4, background: "rgba(0,0,0,0.7)", color: "#fff", fontSize: "0.65rem", fontWeight: 700 }}>Scene {scene.sceneNumber}</div>
+                              <div style={{ position: "absolute", top: 8, right: 8, padding: "0.2rem 0.5rem", borderRadius: 4, background: "rgba(236,72,153,0.8)", color: "#fff", fontSize: "0.6rem" }}>{scene.duration / 1000}s</div>
+                            </div>
+                            <div style={{ padding: "0.5rem 0.75rem" }}>
+                              <p style={{ fontSize: "0.7rem", color: "#94a3b8", lineHeight: 1.4, margin: 0 }}>{scene.narration?.substring(0, 100)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem" }}>
+                        <button onClick={() => { if (genResult?.scenes) { genResult.scenes.forEach((s: any, i: number) => { setTimeout(() => window.open(s.imageUrl, "_blank"), i * 500); }); } }} style={{ padding: "0.5rem 1rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: "0.75rem", cursor: "pointer" }}>↗️ Open All Scenes</button>
+                        <div style={{ fontSize: "0.7rem", color: "#64748b", display: "flex", alignItems: "center" }}>Total duration: {genResult.totalDuration / 1000}s • {genResult.scenes.length} scenes</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Presentation result */}
+                  {genType === "presentation" && genResult?.downloaded && (
+                    <div style={{ padding: "1.5rem", borderRadius: 10, background: "rgba(236,72,153,0.1)", border: "1px solid rgba(236,72,153,0.2)", textAlign: "center" }}>
+                      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📊</div>
+                      <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ec4899" }}>Presentation Downloaded!</div>
+                      <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "0.25rem" }}>{genResult.slideCount} slides generated</div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -49,6 +49,7 @@ function DashboardInner() {
   const [pipelineStep, setPipelineStep] = useState(0);
   const [showResults, setShowResults] = useState(false);
   const [config, setConfig] = useState({ audience: "general", tone: "formal", language: "en", detail: "standard", objective: "inform" });
+  const [selectedMediaTypes, setSelectedMediaTypes] = useState<string[]>(["image", "video", "presentation"]);
   const [notifications, setNotifications] = useState<{id: string; msg: string; type: string}[]>([]);
   const [transformMedia, setTransformMedia] = useState<any>(null);
   const [imageLoadStates, setImageLoadStates] = useState<Record<string, boolean | 'error'>>({});
@@ -94,7 +95,7 @@ function DashboardInner() {
       const res = await fetch("/api/transform", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "transform", sourceContent, outputTypes: selectedOutputs, config, userId: user?.userId }),
+        body: JSON.stringify({ action: "transform", sourceContent, outputTypes: selectedOutputs, config, mediaTypes: selectedMediaTypes, userId: user?.userId }),
       });
       const data = await res.json();
       if (data.success) { setResults(data.results || []); setTransformMedia(data.media || null); setShowResults(true); addNotification("Transformation complete!", "success"); }
@@ -238,7 +239,19 @@ function DashboardInner() {
                   </div>
                 ))}
               </div>
-              <button onClick={handleTransform} style={{ marginTop: "1.25rem", padding: "0.75rem 2rem", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", color: "#fff", fontSize: "0.9rem", fontWeight: 700, cursor: "pointer" }}>⚡ Transform</button>
+              <div style={{ marginTop: "0.75rem" }}>
+                <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.5rem", fontWeight: 600 }}>Generated Media</div>
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  {[{ id: "image", icon: "🖼️", label: "AI Image", desc: "Pollinations.ai" }, { id: "video", icon: "🎬", label: "Video Scenes", desc: "4-scene storyboard" }, { id: "presentation", icon: "📊", label: "PPTX Deck", desc: "Downloadable .pptx" }].map(m => (
+                    <label key={m.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.8rem", borderRadius: 6, border: "1px solid " + (selectedMediaTypes.includes(m.id) ? "#8b5cf6" : "rgba(255,255,255,0.08)"), background: selectedMediaTypes.includes(m.id) ? "rgba(139,92,246,0.12)" : "transparent", cursor: "pointer", transition: "all 0.15s" }}>
+                      <input type="checkbox" checked={selectedMediaTypes.includes(m.id)} onChange={() => setSelectedMediaTypes(prev => prev.includes(m.id) ? prev.filter(t => t !== m.id) : [...prev, m.id])} style={{ accentColor: '#8b5cf6', width: 14, height: 14, cursor: 'pointer' }} />
+                      <span style={{ fontSize: "0.75rem", color: selectedMediaTypes.includes(m.id) ? '#c4b5fd' : '#94a3b8', fontWeight: 600 }}>{m.icon} {m.label}</span>
+                      <span style={{ fontSize: "0.6rem", color: '#64748b' }}>{m.desc}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <button onClick={handleTransform} style={{ marginTop: "1rem", padding: "0.75rem 2rem", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", color: "#fff", fontSize: "0.9rem", fontWeight: 700, cursor: "pointer" }}>⚡ Transform</button>
 
               {/* Results display */}
               {showResults && results.length > 0 && (

@@ -246,18 +246,89 @@ function DashboardInner() {
                           </div>
                           <span style={{ fontSize: "0.65rem", padding: "0.15rem 0.5rem", borderRadius: 4, background: "rgba(59,130,246,0.15)", color: "#3b82f6", fontWeight: 600 }}>{r.type}</span>
                         </summary>
-                        <div style={{ marginTop: "0.75rem", padding: "1rem", borderRadius: 8, background: "rgba(0,0,0,0.2)", fontSize: "0.8rem", color: "#cbd5e1", lineHeight: 1.6, whiteSpace: "pre-wrap", maxHeight: 400, overflow: "auto" }}>
-                          {typeof r.content === "string" ? (
-                            (() => {
-                              try {
-                                const parsed = JSON.parse(r.content);
-                                return <pre style={{ margin: 0, fontFamily: "inherit", fontSize: "0.75rem", color: "#94a3b8" }}>{JSON.stringify(parsed, null, 2)}</pre>;
-                              } catch {
-                                return r.content;
-                              }
-                            })()
-                          ) : (
-                            <span>No content</span>
+                        <div style={{ marginTop: "0.75rem", borderRadius: 8, background: "rgba(0,0,0,0.2)", overflow: "auto" }}>
+                          {r.type === 'presentation' && typeof r.content === 'string' ? (() => {
+                            try {
+                              const parsed = JSON.parse(r.content);
+                              const deck = parsed.slideDeck || parsed;
+                              const slides = deck.slides || [];
+                              return (
+                                <div>
+                                  {/* Slide navigator */}
+                                  <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f1f5f9' }}>{deck.title || 'Presentation'}</div>
+                                      <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: 2 }}>{slides.length} slides • {deck.estimatedDuration || ''} • {deck.theme || ''}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                      {slides.map((_: any, si: number) => (
+                                        <div key={si} style={{ width: 24, height: 18, borderRadius: 3, background: slides[si]?.accentColor ? '#' + slides[si].accentColor + '40' : 'rgba(59,130,246,0.2)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', color: '#94a3b8' }}>{si + 1}</div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  {/* Visual slides */}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '1rem' }}>
+                                    {slides.map((slide: any, si: number) => {
+                                      const accent = slide.accentColor || '3b82f6';
+                                      const isTitle = slide.layout === 'title';
+                                      const isConclusion = slide.layout === 'conclusion';
+                                      return (
+                                        <div key={si} style={{ borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', background: isTitle ? `linear-gradient(135deg, #${accent}, #${accent}cc)` : isConclusion ? `linear-gradient(135deg, #${accent}, #e94560)` : 'rgba(255,255,255,0.04)' }}>
+                                          {/* Slide header bar */}
+                                          <div style={{ padding: '0.3rem 0.75rem', background: `#${accent}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>SLIDE {slide.slideNumber}</span>
+                                            <span style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.6)' }}>{slide.layout}</span>
+                                          </div>
+                                          {/* Slide body */}
+                                          <div style={{ padding: isTitle ? '1.5rem 1.25rem' : '0.75rem 1rem' }}>
+                                            <div style={{ fontSize: isTitle ? '1rem' : '0.8rem', fontWeight: 700, color: isTitle || isConclusion ? '#fff' : '#f1f5f9', marginBottom: '0.5rem', lineHeight: 1.3 }}>
+                                              {slide.title}
+                                            </div>
+                                            {Array.isArray(slide.content) && slide.content.length > 0 && (
+                                              <ul style={{ margin: 0, padding: '0 0 0 1rem' }}>
+                                                {slide.content.filter((c: string) => c).map((line: string, li: number) => (
+                                                  <li key={li} style={{ fontSize: '0.7rem', color: isTitle ? 'rgba(255,255,255,0.85)' : '#cbd5e1', lineHeight: 1.5, marginBottom: '0.15rem' }}>{line}</li>
+                                                ))}
+                                              </ul>
+                                            )}
+                                          </div>
+                                          {/* Speaker notes */}
+                                          {slide.notes && (
+                                            <div style={{ padding: '0.4rem 1rem', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.15)' }}>
+                                              <span style={{ fontSize: '0.55rem', color: '#64748b', fontStyle: 'italic' }}>📝 {slide.notes}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {/* Design guide */}
+                                  {parsed.designGuide && (
+                                    <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                      <div style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 600, marginBottom: '0.25rem' }}>🎨 Design Guide</div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                                        {parsed.designGuide.recommendations?.map((rec: string, ri: number) => (
+                                          <span key={ri} style={{ fontSize: '0.55rem', padding: '0.15rem 0.4rem', borderRadius: 3, background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>{rec}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            } catch {
+                              return <pre style={{ margin: 0, padding: '1rem', fontFamily: 'inherit', fontSize: '0.75rem', color: '#94a3b8' }}>{r.content}</pre>;
+                            }
+                          })() : (
+                            <div style={{ padding: '1rem', fontSize: '0.8rem', color: '#cbd5e1', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxHeight: 400 }}>
+                              {typeof r.content === 'string' ? (() => {
+                                try {
+                                  const parsed = JSON.parse(r.content);
+                                  return <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: '0.75rem', color: '#94a3b8' }}>{JSON.stringify(parsed, null, 2)}</pre>;
+                                } catch {
+                                  return r.content;
+                                }
+                              })() : <span>No content</span>}
+                            </div>
                           )}
                         </div>
                         {r.metadata && (

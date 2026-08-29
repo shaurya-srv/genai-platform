@@ -172,6 +172,46 @@ function DashboardInner() {
                 ))}
               </div>
               <button onClick={handleTransform} style={{ marginTop: "1.25rem", padding: "0.75rem 2rem", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", color: "#fff", fontSize: "0.9rem", fontWeight: 700, cursor: "pointer" }}>⚡ Transform</button>
+
+              {/* Results display */}
+              {showResults && results.length > 0 && (
+                <div style={{ marginTop: "1.5rem" }}>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#10b981", marginBottom: "0.75rem" }}>✅ Transformation Complete — {results.length} outputs generated</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    {results.map((r: any, i: number) => (
+                      <details key={i} style={{ padding: "1rem", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <summary style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#3b82f6" }}>{r.title || r.type}</span>
+                          </div>
+                          <span style={{ fontSize: "0.65rem", padding: "0.15rem 0.5rem", borderRadius: 4, background: "rgba(59,130,246,0.15)", color: "#3b82f6", fontWeight: 600 }}>{r.type}</span>
+                        </summary>
+                        <div style={{ marginTop: "0.75rem", padding: "1rem", borderRadius: 8, background: "rgba(0,0,0,0.2)", fontSize: "0.8rem", color: "#cbd5e1", lineHeight: 1.6, whiteSpace: "pre-wrap", maxHeight: 400, overflow: "auto" }}>
+                          {typeof r.content === "string" ? (
+                            (() => {
+                              try {
+                                const parsed = JSON.parse(r.content);
+                                return <pre style={{ margin: 0, fontFamily: "inherit", fontSize: "0.75rem", color: "#94a3b8" }}>{JSON.stringify(parsed, null, 2)}</pre>;
+                              } catch {
+                                return r.content;
+                              }
+                            })()
+                          ) : (
+                            <span>No content</span>
+                          )}
+                        </div>
+                        {r.metadata && (
+                          <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                            {Object.entries(r.metadata).map(([k, v]) => (
+                              <span key={k} style={{ fontSize: "0.6rem", padding: "0.15rem 0.4rem", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "#64748b" }}>{k}: {String(v)}</span>
+                            ))}
+                          </div>
+                        )}
+                      </details>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

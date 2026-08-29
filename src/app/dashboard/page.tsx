@@ -51,6 +51,11 @@ function DashboardInner() {
   const [config, setConfig] = useState({ audience: "general", tone: "formal", language: "en", detail: "standard", objective: "inform" });
   const [notifications, setNotifications] = useState<{id: string; msg: string; type: string}[]>([]);
   const [transformMedia, setTransformMedia] = useState<any>(null);
+  const [imageLoadStates, setImageLoadStates] = useState<Record<string, boolean | 'error'>>({});
+  const [pptxDownloading, setPptxDownloading] = useState(false);
+
+  const markImageLoaded = (url: string) => setImageLoadStates(prev => ({ ...prev, [url]: true }));
+  const markImageError = (url: string) => setImageLoadStates(prev => ({ ...prev, [url]: 'error' }));
 
   // Generation Hub state
   const [genPrompt, setGenPrompt] = useState("");
@@ -84,7 +89,7 @@ function DashboardInner() {
 
   const handleTransform = async () => {
     if (!sourceContent.trim()) { addNotification("Please enter source content", "error"); return; }
-    setProcessing(true); setPipelineStep(0); setShowResults(false); const stepTimer = setInterval(() => setPipelineStep(prev => Math.min(prev + 1, 5)), 800);
+    setProcessing(true); setPipelineStep(0); setShowResults(false); setImageLoadStates({}); const stepTimer = setInterval(() => setPipelineStep(prev => Math.min(prev + 1, 6)), 900);
     try {
       const res = await fetch("/api/transform", {
         method: "POST",
@@ -152,12 +157,14 @@ function DashboardInner() {
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #020617 0%, #0f172a 50%, #0f172a 100%)", color: "#e2e8f0" }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }`}</style>
       {processing && <ProcessingOverlay isVisible={true} currentStep={pipelineStep} steps={[
-  { id: 'ingest', label: 'Ingesting', icon: '📄', detail: 'Processing source content', status: pipelineStep >= 1 ? 'done' : 'active' },
-  { id: 'analyze', label: 'Analyzing', icon: '🧠', detail: 'Running context engine', status: pipelineStep >= 2 ? 'done' : pipelineStep === 1 ? 'active' : 'pending' },
-  { id: 'generate', label: 'Generating', icon: '⚡', detail: 'Transforming content', status: pipelineStep >= 3 ? 'done' : pipelineStep === 2 ? 'active' : 'pending' },
-  { id: 'validate', label: 'Validating', icon: '🛡️', detail: 'Running security checks', status: pipelineStep >= 4 ? 'done' : pipelineStep === 3 ? 'active' : 'pending' },
-  { id: 'finalize', label: 'Finalizing', icon: '✅', detail: 'Preparing output', status: pipelineStep >= 5 ? 'done' : pipelineStep === 4 ? 'active' : 'pending' },
+  { id: 'ingest', label: 'Ingesting', icon: '📄', detail: 'Reading source content', status: pipelineStep >= 1 ? 'done' : 'active' },
+  { id: 'analyze', label: 'Analyzing', icon: '🧠', detail: 'Running DLP scan & threat analysis', status: pipelineStep >= 2 ? 'done' : pipelineStep === 1 ? 'active' : 'pending' },
+  { id: 'transform', label: 'Transforming', icon: '⚡', detail: 'Generating text outputs', status: pipelineStep >= 3 ? 'done' : pipelineStep === 2 ? 'active' : 'pending' },
+  { id: 'media', label: 'Generating Media', icon: '🎨', detail: 'Creating AI image, video scenes & PPTX', status: pipelineStep >= 4 ? 'done' : pipelineStep === 3 ? 'active' : 'pending' },
+  { id: 'validate', label: 'Validating', icon: '🛡️', detail: 'Running compliance checks', status: pipelineStep >= 5 ? 'done' : pipelineStep === 4 ? 'active' : 'pending' },
+  { id: 'finalize', label: 'Finalizing', icon: '✅', detail: 'Recording on blockchain', status: pipelineStep >= 6 ? 'done' : pipelineStep === 5 ? 'active' : 'pending' },
 ]} />}
 
       {/* Nav */}
@@ -343,15 +350,60 @@ function DashboardInner() {
                   </div>
 
                   {/* === GENERATED MEDIA === */}
-                  {transformMedia && (
+                  {transformMedia && (() => {
+                    const allImageUrls: string[] = [];
+                    if (transformMedia.image?.url) allImageUrls.push(transformMedia.image.url);
+                    if (transformMedia.video?.scenes) transformMedia.video.scenes.forEach((s: any) => allImageUrls.push(s.imageUrl));
+                    const loadedCount = allImageUrls.filter(u => imageLoadStates[u] === true).length;
+                    const errorCount = allImageUrls.filter(u => imageLoadStates[u] === 'error').length;
+                    const allLoaded = allImageUrls.length > 0 && loadedCount + errorCount === allImageUrls.length;
+                    return (
                     <div style={{ marginTop: '1.5rem' }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ec4899', marginBottom: '1rem' }}>🎨 Generated Media</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ec4899' }}>🎨 Generated Media</span>
+                        {allImageUrls.length > 0 && !allLoaded && (
+                          <span style={{ fontSize: '0.7rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <span style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid rgba(245,158,11,0.3)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            Loading assets... {loadedCount}/{allImageUrls.length}
+                          </span>
+                        )}
+                        {allLoaded && (
+                          <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✅ All assets loaded</span>
+                        )}
+                      </div>
+                      {allImageUrls.length > 0 && !allLoaded && (
+                        <div style={{ width: '100%', height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.06)', marginBottom: '1rem', overflow: 'hidden' }}>
+                          <div style={{ width: `${(loadedCount / allImageUrls.length) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #ec4899, #8b5cf6)', borderRadius: 2, transition: 'width 0.3s ease' }} />
+                        </div>
+                      )}
 
                       {/* AI Image Preview */}
                       {transformMedia.image?.url && (
                         <div style={{ marginBottom: '1.25rem', padding: '1rem', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>🖼️ AI Generated Image</div>
-                          <img src={transformMedia.image.url} alt="AI generated" style={{ width: '100%', maxWidth: 600, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)' }} />
+                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
+                            🖼️ AI Generated Image
+                            {!imageLoadStates[transformMedia.image.url] && imageLoadStates[transformMedia.image.url] !== 'error' && (
+                              <span style={{ marginLeft: '0.5rem', fontSize: '0.65rem', color: '#f59e0b' }}>⏳ Generating...</span>
+                            )}
+                            {imageLoadStates[transformMedia.image.url] === 'error' && (
+                              <span style={{ marginLeft: '0.5rem', fontSize: '0.65rem', color: '#ef4444' }}>⚠️ Failed to load</span>
+                            )}
+                          </div>
+                          {!imageLoadStates[transformMedia.image.url] && imageLoadStates[transformMedia.image.url] !== 'error' ? (
+                            <div style={{ width: '100%', maxWidth: 600, height: 338, borderRadius: 10, background: 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1))', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.75rem' }}>
+                              <div style={{ width: 40, height: 40, border: '3px solid rgba(59,130,246,0.3)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>AI is generating your image...</div>
+                              <div style={{ fontSize: '0.6rem', color: '#64748b' }}>This usually takes 5-15 seconds</div>
+                            </div>
+                          ) : imageLoadStates[transformMedia.image.url] === 'error' ? (
+                            <div style={{ width: '100%', maxWidth: 600, height: 200, borderRadius: 10, background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.5rem' }}>
+                              <div style={{ fontSize: '1.5rem' }}>⚠️</div>
+                              <div style={{ fontSize: '0.75rem', color: '#ef4444' }}>Image generation failed</div>
+                              <a href={transformMedia.image.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: '#3b82f6', textDecoration: 'underline' }}>Try opening URL directly</a>
+                            </div>
+                          ) : (
+                            <img src={transformMedia.image.url} alt="AI generated" onLoad={() => markImageLoaded(transformMedia.image.url)} onError={() => markImageError(transformMedia.image.url)} style={{ width: '100%', maxWidth: 600, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)' }} />
+                          )}
                           <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
                             <a href={transformMedia.image.url} target="_blank" rel="noopener noreferrer" style={{ padding: '0.4rem 1rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#94a3b8', fontSize: '0.75rem', textDecoration: 'none' }}>↗️ Open Full Size</a>
                           </div>
@@ -363,18 +415,33 @@ function DashboardInner() {
                         <div style={{ marginBottom: '1.25rem', padding: '1rem', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.75rem' }}>🎬 Video Storyboard — {transformMedia.video.scenes.length} scenes</div>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
-                            {transformMedia.video.scenes.map((scene: any, si: number) => (
-                              <div key={si} style={{ borderRadius: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                                <div style={{ position: 'relative' }}>
-                                  <img src={scene.imageUrl} alt={`Scene ${scene.sceneNumber}`} style={{ width: '100%', height: 120, objectFit: 'cover' }} />
-                                  <div style={{ position: 'absolute', top: 6, left: 6, padding: '0.15rem 0.4rem', borderRadius: 4, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.6rem', fontWeight: 700 }}>Scene {scene.sceneNumber}</div>
-                                  <div style={{ position: 'absolute', top: 6, right: 6, padding: '0.15rem 0.4rem', borderRadius: 4, background: 'rgba(236,72,153,0.8)', color: '#fff', fontSize: '0.55rem' }}>{(scene.duration || 4000) / 1000}s</div>
+                            {transformMedia.video.scenes.map((scene: any, si: number) => {
+                              const sceneLoaded = imageLoadStates[scene.imageUrl];
+                              return (
+                                <div key={si} style={{ borderRadius: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                                  <div style={{ position: 'relative' }}>
+                                    {sceneLoaded !== true && sceneLoaded !== 'error' ? (
+                                      <div style={{ width: '100%', height: 120, background: `linear-gradient(135deg, rgba(59,130,246,0.1), rgba(236,72,153,0.1))`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.3rem' }}>
+                                        <div style={{ width: 20, height: 20, border: '2px solid rgba(236,72,153,0.3)', borderTopColor: '#ec4899', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                        <div style={{ fontSize: '0.55rem', color: '#94a3b8' }}>Scene {scene.sceneNumber}</div>
+                                      </div>
+                                    ) : sceneLoaded === 'error' ? (
+                                      <div style={{ width: '100%', height: 120, background: 'rgba(239,68,68,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.2rem' }}>
+                                        <div style={{ fontSize: '1rem' }}>⚠️</div>
+                                        <div style={{ fontSize: '0.55rem', color: '#ef4444' }}>Failed</div>
+                                      </div>
+                                    ) : (
+                                      <img src={scene.imageUrl} alt={`Scene ${scene.sceneNumber}`} style={{ width: '100%', height: 120, objectFit: 'cover' }} />
+                                    )}
+                                    <div style={{ position: 'absolute', top: 6, left: 6, padding: '0.15rem 0.4rem', borderRadius: 4, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.6rem', fontWeight: 700 }}>Scene {scene.sceneNumber}</div>
+                                    <div style={{ position: 'absolute', top: 6, right: 6, padding: '0.15rem 0.4rem', borderRadius: 4, background: 'rgba(236,72,153,0.8)', color: '#fff', fontSize: '0.55rem' }}>{(scene.duration || 4000) / 1000}s</div>
+                                  </div>
+                                  <div style={{ padding: '0.4rem 0.6rem' }}>
+                                    <p style={{ fontSize: '0.65rem', color: '#94a3b8', lineHeight: 1.3, margin: 0 }}>{(scene.narration || '').substring(0, 120)}</p>
+                                  </div>
                                 </div>
-                                <div style={{ padding: '0.4rem 0.6rem' }}>
-                                  <p style={{ fontSize: '0.65rem', color: '#94a3b8', lineHeight: 1.3, margin: 0 }}>{(scene.narration || '').substring(0, 120)}</p>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -387,22 +454,27 @@ function DashboardInner() {
                             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981' }}>{transformMedia.presentation.fileName}</div>
                             <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.15rem' }}>{transformMedia.presentation.slideCount} slides • Ready to download</div>
                           </div>
-                          <button onClick={() => {
-                            const base64 = transformMedia.presentation.base64;
-                            const binary = atob(base64);
-                            const bytes = new Uint8Array(binary.length);
-                            for (let bi = 0; bi < binary.length; bi++) bytes[bi] = binary.charCodeAt(bi);
-                            const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url; a.download = transformMedia.presentation.fileName;
-                            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
-                          }} style={{ padding: '0.5rem 1.5rem', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #10b981, #06b6d4)', color: '#fff', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>⬇️ Download PPTX</button>
+                          <button disabled={pptxDownloading} onClick={async () => {
+                            setPptxDownloading(true);
+                            try {
+                              const base64 = transformMedia.presentation.base64;
+                              const binary = atob(base64);
+                              const bytes = new Uint8Array(binary.length);
+                              for (let bi = 0; bi < binary.length; bi++) bytes[bi] = binary.charCodeAt(bi);
+                              const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url; a.download = transformMedia.presentation.fileName;
+                              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                            } finally {
+                              setPptxDownloading(false);
+                            }
+                          }} style={{ padding: '0.5rem 1.5rem', borderRadius: 8, border: 'none', background: pptxDownloading ? '#475569' : 'linear-gradient(135deg, #10b981, #06b6d4)', color: '#fff', fontSize: '0.8rem', fontWeight: 700, cursor: pptxDownloading ? 'not-allowed' : 'pointer', opacity: pptxDownloading ? 0.7 : 1 }}>{pptxDownloading ? '⏳ Preparing...' : '⬇️ Download PPTX'}</button>
                         </div>
                       )}
                     </div>
-                  )}
+                    ); })()}
                 </div>
               )}
             </div>

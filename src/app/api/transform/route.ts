@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
           notes: s.notes || '',
           layout: s.layout || (i === 0 ? 'title' : 'content'),
         }));
-        const result = generatePPTXFile(pptxSlides, title || 'Presentation');
+        const result = await generatePPTXFile(pptxSlides, title || 'Presentation');
         HashChain.appendBlock({
           eventType: 'GENERATION',
           actorId: body.userId || 'system',

@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Generate the PPTX file
-    const result = generatePPTXFile(slides, title);
+    const result = await generatePPTXFile(slides, title);
 
     // Record in hash chain
     HashChain.appendBlock({

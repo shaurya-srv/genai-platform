@@ -1,15 +1,11 @@
 /**
- * PPTX Generator — Creates real .pptx files (ZIP-based OOXML)
- * 
- * A PPTX file is a ZIP archive containing XML files following the
- * Office Open XML (OOXML) standard. This generator builds a minimal
- * but valid PPTX from slide data.
- * 
- * Works in Node.js using built-in zlib for compression.
+ * PPTX Generator — Uses pptxgenjs for reliable, standards-compliant .pptx files.
+ *
+ * pptxgenjs handles all OOXML boilerplate, ZIP packaging, and ensures
+ * the output opens correctly in PowerPoint, Google Slides, etc.
  */
 
-import { createHash } from 'crypto';
-import { deflateSync } from 'zlib';
+import PptxGenJS from 'pptxgenjs';
 
 // ==================== TYPES ====================
 
@@ -18,6 +14,7 @@ export interface PPTXSlideData {
   content: string[];
   notes: string;
   layout: 'title' | 'content' | 'twoColumn' | 'conclusion';
+  accentColor?: string;
 }
 
 export interface PPTXResult {
@@ -26,425 +23,141 @@ export interface PPTXResult {
   slideCount: number;
 }
 
-// ==================== ZIP BUILDER ====================
+// ==================== COLOR HELPERS ====================
 
-interface ZipEntry {
-  name: string;
-  data: Buffer;
-  compressed: Buffer;
-  crc: number;
-  offset: number;
-}
-
-function crc32(buf: Buffer): number {
-  let crc = 0xFFFFFFFF;
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) {
-      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    }
-    table[i] = c;
-  }
-  for (let i = 0; i < buf.length; i++) {
-    crc = table[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
-  }
-  return (crc ^ 0xFFFFFFFF) >>> 0;
-}
-
-function buildZip(files: Map<string, Buffer>): Buffer {
-  const entries: ZipEntry[] = [];
-  let offset = 0;
-
-  // Compress each file
-  for (const [name, data] of files) {
-    const compressed = deflateSync(data);
-    const crcVal = crc32(data);
-    entries.push({ name, data, compressed, crc: crcVal, offset });
-    offset += 30 + name.length + compressed.length;
-  }
-
-  const centralDirOffset = offset;
-  let centralDirSize = 0;
-
-  // Build central directory
-  for (const entry of entries) {
-    centralDirSize += 46 + entry.name.length;
-  }
-
-  const totalSize = offset + centralDirSize + 22;
-  const buf = Buffer.alloc(totalSize);
-  let pos = 0;
-
-  // Write local file headers + data
-  for (const entry of entries) {
-    // Local file header signature
-    buf.writeUInt32LE(0x04034B50, pos); pos += 4;
-    buf.writeUInt16LE(20, pos); pos += 2; // version needed
-    buf.writeUInt16LE(0, pos); pos += 2;  // flags
-    buf.writeUInt16LE(8, pos); pos += 2;  // compression method (deflate)
-    buf.writeUInt16LE(0, pos); pos += 2;  // mod time
-    buf.writeUInt16LE(0, pos); pos += 2;  // mod date
-    buf.writeUInt32LE(entry.crc, pos); pos += 4;
-    buf.writeUInt32LE(entry.compressed.length, pos); pos += 4;
-    buf.writeUInt32LE(entry.data.length, pos); pos += 4;
-    buf.writeUInt16LE(entry.name.length, pos); pos += 2;
-    buf.writeUInt16LE(0, pos); pos += 2;  // extra field length
-    buf.write(entry.name, pos, 'utf8'); pos += entry.name.length;
-    entry.compressed.copy(buf, pos); pos += entry.compressed.length;
-  }
-
-  // Write central directory
-  for (const entry of entries) {
-    buf.writeUInt32LE(0x02014B50, pos); pos += 4;
-    buf.writeUInt16LE(20, pos); pos += 2;  // version made by
-    buf.writeUInt16LE(20, pos); pos += 2;  // version needed
-    buf.writeUInt16LE(0, pos); pos += 2;  // flags
-    buf.writeUInt16LE(8, pos); pos += 2;  // compression
-    buf.writeUInt16LE(0, pos); pos += 2;  // mod time
-    buf.writeUInt16LE(0, pos); pos += 2;  // mod date
-    buf.writeUInt32LE(entry.crc, pos); pos += 4;
-    buf.writeUInt32LE(entry.compressed.length, pos); pos += 4;
-    buf.writeUInt32LE(entry.data.length, pos); pos += 4;
-    buf.writeUInt16LE(entry.name.length, pos); pos += 2;
-    buf.writeUInt16LE(0, pos); pos += 2;  // extra
-    buf.writeUInt16LE(0, pos); pos += 2;  // comment
-    buf.writeUInt16LE(0, pos); pos += 2;  // disk start
-    buf.writeUInt16LE(0, pos); pos += 2;  // internal attrs
-    buf.writeUInt32LE(0, pos); pos += 4;  // external attrs
-    buf.writeUInt32LE(entry.offset, pos); pos += 4;
-    buf.write(entry.name, pos, 'utf8'); pos += entry.name.length;
-  }
-
-  // End of central directory
-  buf.writeUInt32LE(0x06054B50, pos); pos += 4;
-  buf.writeUInt16LE(0, pos); pos += 2;  // disk number
-  buf.writeUInt16LE(0, pos); pos += 2;  // disk with central dir
-  buf.writeUInt16LE(entries.length, pos); pos += 2;
-  buf.writeUInt16LE(entries.length, pos); pos += 2;
-  buf.writeUInt32LE(centralDirSize, pos); pos += 4;
-  buf.writeUInt32LE(centralDirOffset, pos); pos += 4;
-  buf.writeUInt16LE(0, pos); pos += 2;
-
-  return buf;
-}
-
-// ==================== OOXML GENERATORS ====================
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-function generateContentTypes(slides: PPTXSlideData[]): string {
-  const slideOverrides = slides.map((_, i) =>
-    `  <Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`
-  ).join('\n');
-
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
-  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
-  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
-  ${slideOverrides}
-</Types>`;
-}
-
-function generateRels(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
-</Relationships>`;
-}
-
-function generatePresentationRels(slides: PPTXSlideData[]): string {
-  const slideRels = slides.map((_, i) =>
-    `  <Relationship Id="rId${i + 10}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i + 1}.xml"/>`
-  ).join('\n');
-
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="slideLayouts/slideLayout1.xml"/>
-  ${slideRels}
-</Relationships>`;
-}
-
-function generateSlideRels(slideIndex: number): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
-</Relationships>`;
-}
-
-function generatePresentation(slides: PPTXSlideData[]): string {
-  const sldIdLst = slides.map((_, i) =>
-    `    <p:sldId id="${256 + i}" r:id="rId${i + 10}"/>`
-  ).join('\n');
-
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-                xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
-                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <p:sldMasterIdLst>
-    <p:sldMasterId id="2147483648" r:id="rId1"/>
-  </p:sldMasterIdLst>
-  <p:sldIdLst>
-${sldIdLst}
-  </p:sldIdLst>
-  <p:sldSz cx="9144000" cy="6858000" type="screen4x3"/>
-  <p:notesSz cx="6858000" cy="9144000"/>
-</p:presentation>`;
-}
-
-function generateSlideMaster(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-             xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
-             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <p:cSld>
-    <p:bg>
-      <p:bgRef idx="1001">
-        <a:schemeClr val="bg1"/>
-      </p:bgRef>
-    </p:bg>
-    <p:spTree>
-      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-    </p:spTree>
-  </p:cSld>
-  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
-</p:sldMaster>`;
-}
-
-function generateSlideLayout(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-             xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
-             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-             type="blank">
-  <p:cSld>
-    <p:spTree>
-      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-    </p:spTree>
-  </p:cSld>
-</p:sldLayout>`;
-}
-
-function generateSlide(slide: PPTXSlideData, index: number, totalSlides: number): string {
-  const isTitleSlide = slide.layout === 'title' || index === 0;
-  const isConclusion = slide.layout === 'conclusion' || index === totalSlides - 1;
-
-  // Accent color from slide data (hex without #)
-  const accentHex = (slide as any).accentColor || '0f3460';
-  const accentLight = accentHex + '40';
-
-  // Build content shapes with numbered bullets and better formatting
-  const contentShapes = slide.content.map((line, i) => {
-    const y = isTitleSlide ? 0 : 1600000 + i * 620000;
-    if (isTitleSlide) return '';
-    const bulletChar = isConclusion ? '\u2605' : '\u25CF';
-    const bulletColor = isConclusion ? 'e94560' : accentHex;
-    return `
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="${10 + i}" name="Bullet ${i + 1}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm>
-            <a:off x="750000" y="${y}"/>
-            <a:ext cx="8200000" cy="520000"/>
-          </a:xfrm>
-          <a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 8000"/></a:avLst></a:prstGeom>
-          <a:solidFill><a:srgbClr val="F8F9FA"/></a:solidFill>
-          <a:ln w="0"><a:noFill/></a:ln>
-        </p:spPr>
-        <p:txBody>
-          <a:bodyPr wrap="square" lIns="120000" tIns="60000" rIns="120000" bIns="60000"/>
-          <a:p>
-            <a:pPr indent="0" marL="0">
-              <a:buFont typeface="Arial" panose="020B0604020202020204"/>
-              <a:buChar char="${bulletChar}"/>
-            </a:pPr>
-            <a:r>
-              <a:rPr lang="en-US" sz="1800" b="0" dirty="0">
-                <a:solidFill><a:srgbClr val="${bulletColor}"/></a:solidFill>
-              </a:rPr>
-              <a:t>  </a:t>
-            </a:r>
-            <a:r>
-              <a:rPr lang="en-US" sz="1800" dirty="0">
-                <a:solidFill><a:srgbClr val="333333"/></a:solidFill>
-              </a:rPr>
-              <a:t>${escapeXml(line.substring(0, 120))}</a:t>
-            </a:r>
-          </a:p>
-        </p:txBody>
-      </p:sp>`;
-  }).filter(Boolean).join('');
-
-  // Accent bar at top of content slides
-  const accentBar = !isTitleSlide ? `
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="98" name="AccentBar"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="100000"/></a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-          <a:solidFill><a:srgbClr val="${accentHex}"/></a:solidFill>
-        </p:spPr>
-      </p:sp>` : '';
-
-  // Slide number
-  const slideNumber = `
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="99" name="SlideNum"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm><a:off x="4200000" y="6400000"/><a:ext cx="700000" cy="400000"/></a:xfrm>
-        </p:spPr>
-        <p:txBody>
-          <a:bodyPr/>
-          <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="1000" dirty="0"><a:solidFill><a:srgbClr val="999999"/></a:solidFill></a:rPr><a:t>${index + 1} / ${totalSlides}</a:t></a:r></a:p>
-        </p:txBody>
-      </p:sp>`;
-
-  // Speaker notes
-  const notesShape = slide.notes ? `
-    <p:sp>
-      <p:nvSpPr><p:cNvPr id="100" name="Notes"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-      <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm></p:spPr>
-      <p:txBody>
-        <a:bodyPr/>
-        <a:p><a:r><a:rPr lang="en-US" sz="1200"/><a:t>${escapeXml(slide.notes)}</a:t></a:r></a:p>
-      </p:txBody>
-    </p:sp>` : '';
-
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-       xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
-       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <p:cSld>
-    <p:bg>
-      <p:bgRef idx="1001"><a:solidFill><a:srgbClr val="${isTitleSlide ? '1a1a2e' : 'FFFFFF'}"/></a:solidFill></p:bgRef>
-    </p:bg>
-    <p:spTree>
-      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-      ${accentBar}
-      ${isTitleSlide ? `
-      <!-- Title slide background accent -->
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="50" name="BgAccent"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm><a:off x="0" y="4000000"/><a:ext cx="9144000" cy="3000000"/></a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-          <a:solidFill><a:srgbClr val="${accentHex}"/></a:solidFill>
-        </p:spPr>
-      </p:sp>
-      <!-- Title -->
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="ctrTitle"/></p:nvPr></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm><a:off x="600000" y="1800000"/><a:ext cx="7900000" cy="2000000"/></a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-        </p:spPr>
-        <p:txBody>
-          <a:bodyPr/>
-          <a:p>
-            <a:pPr algn="ctr"/>
-            <a:r><a:rPr lang="en-US" sz="4400" b="1" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${escapeXml(slide.title.substring(0, 60))}</a:t></a:r>
-          </a:p>
-        </p:txBody>
-      </p:sp>
-      <!-- Subtitle -->
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="3" name="Subtitle"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm><a:off x="1200000" y="4300000"/><a:ext cx="6700000" cy="1000000"/></a:xfrm>
-        </p:spPr>
-        <p:txBody>
-          <a:bodyPr/>
-          <a:p>
-            <a:pPr algn="ctr"/>
-            <a:r><a:rPr lang="en-US" sz="2200" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${escapeXml((slide.content[0] || '').substring(0, 80))}</a:t></a:r>
-          </a:p>
-        </p:txBody>
-      </p:sp>
-      <!-- Date -->
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="4" name="Date"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm><a:off x="3200000" y="5600000"/><a:ext cx="2700000" cy="500000"/></a:xfrm>
-        </p:spPr>
-        <p:txBody>
-          <a:bodyPr/>
-          <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="1400" dirty="0"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:rPr><a:t>${escapeXml(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))}</a:t></a:r></a:p>
-        </p:txBody>
-      </p:sp>` : `
-      <!-- Content slide title -->
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm><a:off x="500000" y="200000"/><a:ext cx="8200000" cy="1000000"/></a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-        </p:spPr>
-        <p:txBody>
-          <a:bodyPr/>
-          <a:p>
-            <a:r><a:rPr lang="en-US" sz="3200" b="1" dirty="0"><a:solidFill><a:srgbClr val="${accentHex}"/></a:solidFill></a:rPr><a:t>${escapeXml(slide.title.substring(0, 60))}</a:t></a:r>
-          </a:p>
-        </p:txBody>
-      </p:sp>
-      <!-- Accent underline -->
-      <p:sp>
-        <p:nvSpPr><p:cNvPr id="97" name="Underline"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
-        <p:spPr>
-          <a:xfrm><a:off x="500000" y="1150000"/><a:ext cx="2000000" cy="60000"/></a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-          <a:solidFill><a:srgbClr val="${accentHex}"/></a:solidFill>
-        </p:spPr>
-      </p:sp>
-      ${contentShapes}`}
-      ${slideNumber}
-      ${notesShape}
-    </p:spTree>
-  </p:cSld>
-  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
-</p:sld>`;
+function hexToPptx(hex: string): string {
+  return hex.replace(/^#/, '');
 }
 
 // ==================== MAIN GENERATOR ====================
 
-export function generatePPTXFile(slides: PPTXSlideData[], title: string): PPTXResult {
-  const files = new Map<string, Buffer>();
+export async function generatePPTXFile(slides: PPTXSlideData[], title: string): Promise<PPTXResult> {
+  const pptx = new PptxGenJS();
 
-  // [Content_Types].xml
-  files.set('[Content_Types].xml', Buffer.from(generateContentTypes(slides), 'utf8'));
+  // Presentation metadata
+  pptx.author = 'NTRO GenAI Platform';
+  pptx.company = 'NTRO';
+  pptx.subject = title;
+  pptx.title = title;
+  pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 inches
 
-  // _rels/.rels
-  files.set('_rels/.rels', Buffer.from(generateRels(), 'utf8'));
+  const totalSlides = slides.length;
 
-  // ppt/presentation.xml
-  files.set('ppt/presentation.xml', Buffer.from(generatePresentation(slides), 'utf8'));
-
-  // ppt/_rels/presentation.xml.rels
-  files.set('ppt/_rels/presentation.xml.rels', Buffer.from(generatePresentationRels(slides), 'utf8'));
-
-  // ppt/slideMasters/slideMaster1.xml
-  files.set('ppt/slideMasters/slideMaster1.xml', Buffer.from(generateSlideMaster(), 'utf8'));
-
-  // ppt/slideLayouts/slideLayout1.xml
-  files.set('ppt/slideLayouts/slideLayout1.xml', Buffer.from(generateSlideLayout(), 'utf8'));
-
-  // Slides
   for (let i = 0; i < slides.length; i++) {
-    const slideXml = generateSlide(slides[i], i, slides.length);
-    files.set(`ppt/slides/slide${i + 1}.xml`, Buffer.from(slideXml, 'utf8'));
-    files.set(`ppt/slides/_rels/slide${i + 1}.xml.rels`, Buffer.from(generateSlideRels(i), 'utf8'));
+    const slide = slides[i];
+    const isTitleSlide = slide.layout === 'title' || i === 0;
+    const isConclusion = slide.layout === 'conclusion' || i === totalSlides - 1;
+    const accent = hexToPptx(slide.accentColor || '0f3460');
+
+    if (isTitleSlide) {
+      // ========== TITLE SLIDE ==========
+      const slideObj = pptx.addSlide();
+      slideObj.background = { color: '1a1a2e' };
+
+      // Accent bar at bottom
+      slideObj.addShape(pptx.ShapeType.rect, {
+        x: 0, y: 4.5, w: 13.33, h: 3.0,
+        fill: { color: accent },
+      });
+
+      // Title text
+      slideObj.addText(slide.title.substring(0, 60), {
+        x: 0.5, y: 1.5, w: 12.33, h: 2.0,
+        fontSize: 40,
+        fontFace: 'Calibri',
+        color: 'FFFFFF',
+        bold: true,
+        align: 'center',
+      });
+
+      // Subtitle / first content line
+      if (slide.content[0]) {
+        slideObj.addText(slide.content[0].substring(0, 80), {
+          x: 1.5, y: 3.5, w: 10.33, h: 0.8,
+          fontSize: 18,
+          fontFace: 'Calibri',
+          color: 'CCCCCC',
+          align: 'center',
+        });
+      }
+
+      // Date
+      slideObj.addText(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), {
+        x: 3, y: 5.8, w: 7.33, h: 0.5,
+        fontSize: 14,
+        fontFace: 'Calibri',
+        color: 'FFFFFF',
+        align: 'center',
+      });
+
+      // Speaker notes
+      if (slide.notes) {
+        slideObj.addNotes(slide.notes);
+      }
+
+    } else {
+      // ========== CONTENT SLIDE ==========
+      const slideObj = pptx.addSlide();
+      slideObj.background = { color: 'FFFFFF' };
+
+      // Accent bar at top
+      slideObj.addShape(pptx.ShapeType.rect, {
+        x: 0, y: 0, w: 13.33, h: 0.15,
+        fill: { color: accent },
+      });
+
+      // Slide title
+      slideObj.addText(slide.title.substring(0, 60), {
+        x: 0.6, y: 0.3, w: 12, h: 0.8,
+        fontSize: 26,
+        fontFace: 'Calibri',
+        color: accent,
+        bold: true,
+      });
+
+      // Accent underline
+      slideObj.addShape(pptx.ShapeType.rect, {
+        x: 0.6, y: 1.05, w: 2.5, h: 0.06,
+        fill: { color: accent },
+      });
+
+      // Bullet content
+      const bulletColor = isConclusion ? 'e94560' : '333333';
+      const bulletItems = slide.content.map((line, idx) => ({
+        text: line.substring(0, 120),
+        options: {
+          fontSize: 16,
+          fontFace: 'Calibri',
+          color: bulletColor,
+          bullet: { code: isConclusion ? '2605' : '25CF', color: accent },
+          breakType: idx > 0 ? 'break' as const : undefined,
+          paraSpaceAfter: 8,
+        },
+      }));
+
+      slideObj.addText(bulletItems, {
+        x: 0.6, y: 1.3, w: 12, h: 5.0,
+        valign: 'top',
+      });
+
+      // Slide number
+      slideObj.addText(`${i + 1} / ${totalSlides}`, {
+        x: 5.5, y: 6.8, w: 2.33, h: 0.4,
+        fontSize: 10,
+        fontFace: 'Calibri',
+        color: '999999',
+        align: 'center',
+      });
+
+      // Speaker notes
+      if (slide.notes) {
+        slideObj.addNotes(slide.notes);
+      }
+    }
   }
 
-  const buffer = buildZip(files);
+  // Generate buffer
+  const buffer = await pptx.write({ outputType: 'nodebuffer' }) as Buffer;
   const safeName = title.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_').substring(0, 50);
 
   return {

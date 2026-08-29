@@ -108,24 +108,24 @@ export async function POST(request: NextRequest) {
       // ==================== CONTENT TRANSFORMATION ====================
       case "transform": {
         const { content: rawContent, sourceContent, config } = body;
-        const content = rawContent || sourceContent;
-        if (!content || typeof content !== 'string') {
+        const inputContent = rawContent || sourceContent || '';
+        if (!inputContent || typeof inputContent !== 'string') {
           return NextResponse.json({ error: 'Content is required' }, { status: 400 });
         }
 
         // Pre-sanitize content for prompt injection
-        const sanitizeResult = PromptSanitizer.sanitize(content);
-        const safeContent = sanitizeResult.safe ? sanitizeResult.sanitizedContent : content;
+        const sanitizeResult = PromptSanitizer.sanitize(inputContent);
+        const safeContent = sanitizeResult.safe ? sanitizeResult.sanitizedContent : inputContent;
 
         const result = await ContentTransformer.transform(safeContent, config);
 
         // Record on blockchain
         const sourceHash = blockchain.constructor === Object
-          ? require("@/lib/blockchain").blockchain.constructor.hashContent(content)
+          ? require("@/lib/blockchain").blockchain.constructor.hashContent(inputContent)
           : "hash";
 
         const blockchainRecord = await blockchain.recordTransformation(
-          content,
+          inputContent,
           JSON.stringify(result.results),
           config.outputTypes.join(", "),
           "operator",
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
         result.sourceHash = blockchainRecord.contentHash;
 
         // Add compliance badges
-        const compliance = ComplianceChecker.check(content);
+        const compliance = ComplianceChecker.check(inputContent);
         for (const badge of compliance.badges.filter(b => b.earned)) {
           await blockchain.addComplianceBadge(blockchainRecord.id, badge.name, "system");
         }

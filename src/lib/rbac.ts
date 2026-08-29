@@ -8,6 +8,19 @@
 
 // ==================== TYPES ====================
 
+export type RBACRole =
+  | 'VIEWER'
+  | 'CONTENT_CREATOR'
+  | 'CONTENT_EDITOR'
+  | 'ANALYST'
+  | 'SECURITY_OFFICER'
+  | 'COMPLIANCE_OFFICER'
+  | 'CONTENT_MANAGER'
+  | 'EXECUTIVE'
+  | 'LEGAL_COUNSEL'
+  | 'DPO'
+  | 'SYSTEM_ADMIN';
+
 export type Permission =
   // Content operations
   | 'content:submit'

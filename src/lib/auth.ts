@@ -377,7 +377,7 @@ export class AuthService {
     // Check portal matches role — allow any portal for dual-auth flow
     if (user.role !== portal && portal !== 'OPERATOR') {
       loginHistory.push({ userId: user.userId, timestamp: Date.now(), success: false, portal, ip });
-      return { success: false, error:  };
+      return { success: false, error: 'Portal access denied for this role' };
     }
 
     // MFA check — if enrolled, require TOTP verification

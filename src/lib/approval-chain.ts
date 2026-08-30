@@ -107,45 +107,39 @@ function buildApprovalChain(
 ): ApprovalStep[] {
   const submitterNum = ROLE_LEVEL_HIERARCHY[submitterLevel];
   const steps: ApprovalStep[] = [];
-  
-  const hasSocialPublishing = outputTypes.some(t => 
-    ['linkedin', 'twitter', 'executive_summary'].includes(t)
-  );
+
   const hasCrisisContent = outputTypes.includes('crisis_response');
   const isHighRisk = riskLevel === 'HIGH' || riskLevel === 'CRITICAL';
-  
-  // Step 1: Middle Management review (Level 3) — always required
-  // Must be at least one level above the submitter
-  const firstReviewerMin = Math.min(submitterNum + 1, ROLE_LEVEL_HIERARCHY.scientist_d);
-  const firstReviewerLevel = getLevelForNumber(Math.max(firstReviewerMin, ROLE_LEVEL_HIERARCHY.scientist_d));
+
+  // Level 1 & 2 (Executive / Senior Management) — can post directly, no approval needed
+  // chairman (9), distinguished_scientist (8), outstanding_scientist (7),
+  // scientist_g (6), scientist_f (5), scientist_e (4)
+  if (submitterNum >= ROLE_LEVEL_HIERARCHY.scientist_e) {
+    return steps; // Empty chain = auto-approve
+  }
+
+  // Level 3 & 4 (Middle Management / General Staff) — need Level 2 approval
+  // scientist_d (3), scientist_c (2), general_scientist (1)
+
+  // Step 1: Senior Management (Level 2) review — always required for Level 3/4
   steps.push({
     stepNumber: 1,
-    requiredLevel: firstReviewerLevel,
-    requiredRoleName: getLevelLabel(firstReviewerLevel),
+    requiredLevel: 'scientist_f',
+    requiredRoleName: 'Scientist F (Senior Management)',
     status: 'PENDING',
   });
-  
-  // Step 2: Senior Management review (Level 2) — required for social publishing or medium+ risk
-  if (hasSocialPublishing || isHighRisk || hasCrisisContent) {
-    steps.push({
-      stepNumber: 2,
-      requiredLevel: 'scientist_f',
-      requiredRoleName: 'Scientist F (Senior Management)',
-      status: 'PENDING',
-    });
-  }
-  
-  // Step 3: Executive review (Level 1) — required for high-risk or crisis content
+
+  // Step 2: Executive review (Level 1) — required for high-risk or crisis content
   if (isHighRisk || hasCrisisContent) {
     steps.push({
-      stepNumber: 3,
+      stepNumber: 2,
       requiredLevel: 'outstanding_scientist',
       requiredRoleName: 'Outstanding Scientist (Executive)',
       status: 'PENDING',
     });
   }
-  
-  // Step 4: Chairman sign-off — only for CRITICAL risk
+
+  // Step 3: Chairman sign-off — only for CRITICAL risk
   if (riskLevel === 'CRITICAL') {
     steps.push({
       stepNumber: steps.length + 1,
@@ -154,7 +148,7 @@ function buildApprovalChain(
       status: 'PENDING',
     });
   }
-  
+
   return steps;
 }
 
@@ -267,15 +261,27 @@ export class ApprovalChainService {
       publishTargets,
       deadline: Date.now() + this.getDeadlineForRisk(riskLevel),
       metadata: params.metadata || {},
-    };
-    
-    // Activate first step
-    if (chain.length > 0) {
+    };    // Level 1/2: empty chain = auto-approve and publish immediately
+    if (chain.length === 0) {
+      request.status = 'APPROVED';
+      chainHistory.push({
+        id: `ch-${Date.now()}`,
+        timestamp: Date.now(),
+        eventType: 'AUTO_APPROVED',
+        requestId: request.id,
+        actor: params.submittedByName,
+        details: {
+          reason: `Level 1/2 submitter (${params.submittedByLevel}) — direct publish authority`,
+          outputTypes: params.outputTypes,
+        },
+      });
+    } else {
+      // Activate first step
       chain[0].status = 'ACTIVE';
     }
-    
+
     chainRequests.set(request.id, request);
-    
+
     chainHistory.push({
       id: `ch-${Date.now()}`,
       timestamp: Date.now(),

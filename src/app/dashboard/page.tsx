@@ -198,7 +198,8 @@ function DashboardInner() {
       });
       const data = await res.json();
       if (data.success) {
-        addNotification(`Finalised! Chain has ${data.request.chain.length} approval step(s)`, "success");
+        const chainLen = data.request.chain.length;
+        addNotification(chainLen === 0 ? "Approved & publishing directly! (Level 1/2 authority)" : `Finalised! Chain has ${chainLen} approval step(s)`, "success");
         setChainRequests(prev => [data.request, ...prev]);
       } else {
         addNotification(data.error || "Failed to finalise", "error");

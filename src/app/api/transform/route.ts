@@ -14,6 +14,7 @@ import { generateSRT, generateSTIXBundle } from "@/lib/file-generators";
 import { extractContext } from "@/lib/context-engine";
 import { generatePPTXFile } from "@/lib/pptx-generator";
 import { generateInfographicSVG } from "@/lib/infographic-generator";
+import { llmTransform } from "@/lib/llm-transformer";
 
 export async function POST(request: NextRequest) {
   try {
@@ -135,6 +136,30 @@ export async function POST(request: NextRequest) {
         const safeContent = sanitizeResult.safe ? sanitizeResult.sanitizedContent : inputContent;
 
         const result = await ContentTransformer.transform(safeContent, cfg);
+
+        // ========== LLM ENRICHMENT ==========
+        // Enhance each output with LLM-generated content
+        try {
+          for (const outputType of cfg.outputTypes) {
+            const llmResult = await llmTransform({
+              sourceContent: safeContent,
+              outputType,
+              config: {
+                targetAudience: cfg.targetAudience,
+                tone: cfg.tone,
+                language: cfg.language,
+                detailLevel: cfg.detailLevel,
+                communicationObjective: cfg.communicationObjective,
+              },
+            });
+            // Find matching result and enrich it
+            const existing = result.results.find((r: any) => r.type === outputType);
+            if (existing && llmResult.content) {
+              existing.content = llmResult.content;
+              existing.metadata = { ...existing.metadata, model: llmResult.model, tokensUsed: llmResult.tokensUsed };
+            }
+          }
+        } catch (e) { console.error('[LLM] Enrichment failed, using templates:', e); }
 
         // ========== GENERATE ADDITIONAL MEDIA ==========
         // Build a descriptive prompt from the source content for image/video generation

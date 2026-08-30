@@ -872,6 +872,23 @@ function DashboardInner() {
                           <input value={approvalComment} onChange={e => setApprovalComment(e.target.value)} placeholder="Comments..." style={{ flex: 1, padding: '0.4rem 0.75rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.05)', color: '#f1f5f9', fontSize: '0.75rem', outline: 'none' }} />
                         </div>
                       )}
+                      {/* Post-approval actions */}
+                      {(cr.status === 'APPROVED' || cr.status === 'PUBLISHED') && (
+                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                          <button onClick={async () => {
+                            const res = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approval_report', userId: user?.userId, requestId: cr.id }) });
+                            if (res.ok) { const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `approval-report-${cr.id}.pdf`; a.click(); URL.revokeObjectURL(url); }
+                          }} style={{ padding: '0.35rem 0.8rem', borderRadius: 6, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.1)', color: '#a78bfa', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer' }}>📄 PDF Report</button>
+                          {cr.outputTypes?.filter((t: string) => ['linkedin', 'twitter'].includes(t)).map((platform: string) => (
+                            <button key={platform} onClick={async () => {
+                              const optimalRes = await fetch(`/api/schedule?action=optimal&platform=${platform}`);
+                              const optimal = await optimalRes.json();
+                              await fetch('/api/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'schedule', userId: user?.userId, title: cr.title, content: cr.contentPreview || cr.title, platform, accountId: 'demo', scheduledAt: optimal.timestamp }) });
+                              addNotification(`Scheduled for ${platform} at ${new Date(optimal.timestamp).toLocaleString()}`, 'success');
+                            }} style={{ padding: '0.35rem 0.8rem', borderRadius: 6, border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.1)', color: '#34d399', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer' }}>⏰ Schedule {platform}</button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -919,7 +936,14 @@ function DashboardInner() {
               )}
               {/* Hash Chain Tab */}
               {auditTab === 'chain' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                    <button onClick={async () => {
+                      const res = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'audit_report', userId: user?.userId }) });
+                      if (res.ok) { const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `audit-report-${new Date().toISOString().split('T')[0]}.pdf`; a.click(); URL.revokeObjectURL(url); addNotification('Audit report downloaded', 'success'); }
+                    }} style={{ padding: '0.4rem 1rem', borderRadius: 6, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.1)', color: '#a78bfa', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📄 Download Audit PDF</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                   {auditChainHistory.length > 0 ? auditChainHistory.map((block: any, i: number) => (
                     <div key={i} style={{ padding: '0.6rem 1rem', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <div style={{ minWidth: 24, height: 24, borderRadius: 4, background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', color: '#3b82f6', fontWeight: 700 }}>#{block.blockNumber}</div>
@@ -935,6 +959,7 @@ function DashboardInner() {
                       <p style={{ fontSize: '0.7rem' }}>Actions are recorded on the blockchain as they happen</p>
                     </div>
                   )}
+                  </div>
                 </div>
               )}
             </div>

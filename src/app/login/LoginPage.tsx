@@ -20,33 +20,10 @@ function LoginPageInner() {
 
   // Handle Google OAuth callback redirect
   useEffect(() => {
-    const googleSuccess = searchParams.get("google_success");
     const googleError = searchParams.get("google_error");
-    const sessionToken = searchParams.get("session_token");
-    const userId = searchParams.get("user_id");
-    const userName = searchParams.get("user_name");
-    const userRole = searchParams.get("user_role");
-    const userLevel = searchParams.get("user_level");
-    const googleEmailParam = searchParams.get("google_email");
 
     if (googleError) {
       setError(`Google auth failed: ${decodeURIComponent(googleError)}`);
-      return;
-    }
-
-    if (googleSuccess && sessionToken && userId) {
-      // Store session and redirect to dashboard
-      const user = {
-        userId,
-        username: userId,
-        displayName: userName || "Google User",
-        role: userRole || "OPERATOR",
-        roleLevel: userLevel || "general_scientist",
-        email: googleEmailParam || "",
-      };
-      localStorage.setItem("auth_session", JSON.stringify({ token: sessionToken, userId, role: userRole }));
-      localStorage.setItem("auth_user", JSON.stringify(user));
-      router.push(`/dashboard?portal=${userRole}&userId=${userId}`);
       return;
     }
 
@@ -67,16 +44,19 @@ function LoginPageInner() {
           })
             .then(r => r.json())
             .then(data => {
-              if (data.success && data.session && data.user) {
-                localStorage.setItem('auth_session', JSON.stringify(data.session));
-                localStorage.setItem('auth_user', JSON.stringify(data.user));
+              if (data.success && data.user) {
+                // Store Google identity — do NOT redirect to dashboard yet
+                // User must still enter org credentials
+                setGoogleVerified(true);
+                setGoogleEmail(data.user.googleEmail || data.user.email || '');
+                // Store Google session temporarily (needed for final login)
+                localStorage.setItem('google_session', JSON.stringify({ token: data.session.token, userId: data.user.userId }));
                 // Clear hash from URL
                 window.history.replaceState({}, document.title, window.location.pathname);
-                router.push(`/dashboard?portal=${data.user.role}&userId=${data.user.userId}`);
               } else {
                 setError(data.error || 'Failed to complete Google auth');
-                setGoogleLoading(false);
               }
+              setGoogleLoading(false);
             })
             .catch(() => {
               setError('Connection error during auth exchange');
@@ -85,7 +65,7 @@ function LoginPageInner() {
         }
       }
     }
-  }, [searchParams, router]);
+  }, [searchParams]);
 
   // Step 1: Google sign-in via Supabase
   const handleGoogleSignIn = async () => {
@@ -117,12 +97,14 @@ function LoginPageInner() {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "login", username, password, portal: "OPERATOR" }),
+        body: JSON.stringify({ action: "login", username, password, portal: "OPERATOR", googleEmail }),
       });
       const data = await res.json();
       if (data.success && data.session) {
         localStorage.setItem("auth_session", JSON.stringify(data.session));
         localStorage.setItem("auth_user", JSON.stringify(data.user));
+        // Clear temp Google session
+        localStorage.removeItem("google_session");
         router.push("/dashboard?portal=" + data.user.role + "&userId=" + data.user.userId);
       } else if (data.mfaRequired) {
         setChallengeId(data.challengeId); setMfaRequired(true);

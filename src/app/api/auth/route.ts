@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case "login": {
-        const { username, password, portal } = body;
+        const { username, password, portal, googleEmail } = body;
         if (!username || !password || !portal) {
           return NextResponse.json({ error: "Username, password, and portal are required" }, { status: 400 });
         }
@@ -34,6 +34,12 @@ export async function POST(request: NextRequest) {
 
         if (!result.success) {
           return NextResponse.json({ error: result.error }, { status: 401 });
+        }
+
+        // Link Google identity to the org credential user
+        if (result.user && googleEmail) {
+          result.user.googleEmail = googleEmail;
+          result.user.authProvider = 'both';
         }
 
         // Persist login to DB

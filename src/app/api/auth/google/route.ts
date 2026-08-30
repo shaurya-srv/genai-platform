@@ -1,45 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer, isSupabaseConfigured } from "@/lib/supabase";
-import { AuthService } from "@/lib/auth";
+import { getSupabaseServer } from "@/lib/supabase";
 
 /**
  * GET /api/auth/google
- * Initiates Google OAuth via Supabase.
- * 
- * - Real mode: returns Supabase auth URL to redirect to
- * - Demo mode: simulates Google auth
+ * Returns the Supabase Google OAuth URL.
+ * No demo fallback — requires real Supabase configuration.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const action = searchParams.get("action");
-
-  // Handle mock/demo Google auth
-  if (action === "google_mock") {
-    const result = await AuthService.handleGoogleCallback("demo-code");
-    return NextResponse.json({
-      success: true,
-      session: result.session,
-      user: result.user,
-      isNewUser: result.isNewUser,
-    });
-  }
-
-  // Check if Supabase is configured
   const supabase = getSupabaseServer();
   if (!supabase) {
-    // No Supabase — use demo mode
     return NextResponse.json({
-      mode: "demo",
+      mode: "unconfigured",
       url: null,
-      message: "Supabase not configured — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local",
-    });
+      error: "Supabase not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local",
+    }, { status: 503 });
   }
 
-  // Build redirect URI from the current request origin
   const origin = new URL(request.url).origin;
   const redirectTo = `${origin}/api/auth/google/callback`;
 
-  // Use Supabase to get the Google OAuth URL
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
@@ -53,10 +32,10 @@ export async function GET(request: NextRequest) {
 
   if (error || !data?.url) {
     return NextResponse.json({
-      mode: "demo",
+      mode: "error",
       url: null,
-      message: `Supabase OAuth error: ${error?.message || "No URL returned"}`,
-    });
+      error: `OAuth error: ${error?.message || "Failed to generate auth URL"}`,
+    }, { status: 500 });
   }
 
   return NextResponse.json({
@@ -67,7 +46,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/auth/google
- * Handle Supabase session exchange after OAuth callback
+ * Exchange Supabase access token for a platform session
  */
 export async function POST(request: NextRequest) {
   try {
@@ -75,22 +54,21 @@ export async function POST(request: NextRequest) {
     const { action, access_token } = body;
 
     if (action === "exchange" && access_token) {
-      // Verify the Supabase token and create/link user
       const { verifySupabaseToken } = await import("@/lib/supabase");
       const { persistAuthUser } = await import("@/lib/db-init");
+      const { AuthService } = await import("@/lib/auth");
 
       const supabaseUser = await verifySupabaseToken(access_token);
       if (!supabaseUser) {
         return NextResponse.json({ error: "Invalid Supabase token" }, { status: 401 });
       }
 
-      // Find or create user in our system
       const allUsers = AuthService.getAllUsers();
-      let existingUser: typeof allUsers[0] | null | undefined = allUsers.find(u => u.googleId === supabaseUser.id || u.email === supabaseUser.email);
+      let existingUser: typeof allUsers[0] | null | undefined = allUsers.find(
+        u => u.googleId === supabaseUser.id || u.email === supabaseUser.email
+      );
 
       if (!existingUser) {
-        // Create new user from Google profile
-        const id = `g-${Date.now().toString(36)}`;
         existingUser = AuthService.createUser(
           supabaseUser.email.split("@")[0],
           supabaseUser.name,
@@ -105,7 +83,6 @@ export async function POST(request: NextRequest) {
           persistAuthUser(existingUser);
         }
       } else {
-        // Update existing user's Google info
         existingUser.lastLogin = Date.now();
         existingUser.googleId = supabaseUser.id;
         existingUser.googleEmail = supabaseUser.email;
@@ -117,14 +94,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
       }
 
-      // Create session
       const session = AuthService.createSession(existingUser);
-
-      return NextResponse.json({
-        success: true,
-        session,
-        user: existingUser,
-      });
+      return NextResponse.json({ success: true, session, user: existingUser });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

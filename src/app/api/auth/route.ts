@@ -139,27 +139,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success });
       }
 
-      case "google_login": {
-        // Simulate Google OAuth — in production, redirect to Google's auth endpoint
-        const { portal: loginPortal } = body;
-        const result = await AuthService.handleGoogleCallback('demo-code');
-        if (!result.success) {
-          return NextResponse.json({ error: result.error }, { status: 401 });
-        }
-        // Override role based on selected portal if provided
-        if (loginPortal && result.user) {
-          result.user.role = loginPortal;
-          result.user.portalUrl = `/dashboard?portal=${loginPortal}`;
-        }
-        if (result.user) persistAuthUser(result.user);
-        return NextResponse.json({
-          success: true,
-          session: result.session,
-          user: result.user,
-          isNewUser: result.isNewUser,
-        });
-      }
-
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }

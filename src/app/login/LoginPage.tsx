@@ -70,35 +70,22 @@ function LoginPageInner() {
     }
   }, [searchParams, router]);
 
-  // Step 1: Google sign-in — redirect to Google OAuth or use demo mode
+  // Step 1: Google sign-in via Supabase
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true); setError("");
     try {
-      // Check if Google OAuth is configured (real credentials in .env.local)
       const googleRes = await fetch("/api/auth/google");
       const googleData = await googleRes.json();
 
       if (googleData.mode === "real" && googleData.url) {
-        // Real Google OAuth — redirect to Google's consent screen
         window.location.href = googleData.url;
-        return; // Page will navigate away
+        return;
       }
 
-      // Demo mode — simulate Google auth with the existing endpoint
-      const res = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "google_login" }),
-      });
-      const data = await res.json();
-      if (data.success && data.user) {
-        setGoogleVerified(true);
-        setGoogleEmail(data.user.googleEmail || data.user.email || "demo@ntro.gov.in");
-      } else {
-        setGoogleVerified(true); setGoogleEmail("demo@ntro.gov.in");
-      }
+      // Supabase not configured — show setup instructions
+      setError(googleData.error || "Google auth not configured. Please set up Supabase in .env.local");
     } catch {
-      setGoogleVerified(true); setGoogleEmail("demo@ntro.gov.in");
+      setError("Failed to connect to auth server");
     }
     setGoogleLoading(false);
   };
@@ -219,15 +206,6 @@ function LoginPageInner() {
           </div>
         </div>
 
-        {/* Demo accounts */}
-        <div style={{ marginTop: "1.25rem", padding: "0.75rem", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{ fontSize: "0.65rem", color: "#64748b", marginBottom: "0.4rem", fontWeight: 600 }}>Demo Accounts (password: ntro123)</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.2rem" }}>
-            {["chairman", "scientist_g", "scientist_d", "scientist"].map(u => (
-              <div key={u} onClick={() => { setUsername(u); setPassword('ntro123'); }} style={{ fontSize: '0.6rem', color: '#94a3b8', cursor: 'pointer', padding: '0.15rem 0.4rem', borderRadius: 4 }} onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>{u}</div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

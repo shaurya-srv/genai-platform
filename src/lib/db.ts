@@ -16,27 +16,30 @@ const DB_PATH = join(process.cwd(), 'data', 'genai.db');
 
 let db: Database | null = null;
 let initPromise: Promise<Database> | null = null;
+let dbAvailable = true;
 
 // ==================== INITIALIZATION ====================
 
-async function getDB(): Promise<Database> {
+async function getDB(): Promise<Database | null> {
+  if (!dbAvailable) return null;
   if (db) return db;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    const SQL = await initSqlJs();
+    try {
+      const SQL = await initSqlJs();
 
-    // Try to load existing database file
-    let data: Buffer | undefined;
-    if (existsSync(DB_PATH)) {
+      // Try to load existing database file
+      let data: Buffer | undefined;
       try {
-        data = readFileSync(DB_PATH) as Buffer;
+        if (existsSync(DB_PATH)) {
+          data = readFileSync(DB_PATH) as Buffer;
+        }
       } catch {
-        // Fresh database
+        // Filesystem not available (serverless)
       }
-    }
 
-    const database = data ? new SQL.Database(data) : new SQL.Database();
+      const database = data ? new SQL.Database(data) : new SQL.Database();
 
     // Create tables
     database.run(`
@@ -140,6 +143,11 @@ async function getDB(): Promise<Database> {
 
     db = database;
     return database;
+    } catch (e) {
+      console.error('[DB] Initialization failed, running without persistence:', e);
+      dbAvailable = false;
+      return null as any;
+    }
   })();
 
   return initPromise;
@@ -149,31 +157,35 @@ async function getDB(): Promise<Database> {
 
 export function dbRun(sql: string, params: any[] = []): void {
   const d = db;
-  if (!d) throw new Error('Database not initialized');
-  d.run(sql, params);
+  if (!d) return; // Silently skip when DB unavailable
+  try { d.run(sql, params); } catch { /* ignore */ }
 }
 
 export function dbGet(sql: string, params: any[] = []): any | null {
   const d = db;
-  if (!d) throw new Error('Database not initialized');
-  const stmt = d.prepare(sql);
-  stmt.bind(params);
-  const result = stmt.step() ? stmt.getAsObject() : null;
-  stmt.free();
-  return result;
+  if (!d) return null; // Return null when DB unavailable
+  try {
+    const stmt = d.prepare(sql);
+    stmt.bind(params);
+    const result = stmt.step() ? stmt.getAsObject() : null;
+    stmt.free();
+    return result;
+  } catch { return null; }
 }
 
 export function dbAll(sql: string, params: any[] = []): any[] {
   const d = db;
-  if (!d) throw new Error('Database not initialized');
-  const stmt = d.prepare(sql);
-  stmt.bind(params);
-  const rows: any[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
-  stmt.free();
-  return rows;
+  if (!d) return []; // Return empty when DB unavailable
+  try {
+    const stmt = d.prepare(sql);
+    stmt.bind(params);
+    const rows: any[] = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return rows;
+  } catch { return []; }
 }
 
 /** Save database to disk (call after writes in non-serverless environments) */

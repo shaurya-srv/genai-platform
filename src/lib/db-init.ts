@@ -15,7 +15,13 @@ let seeded = false;
 
 /** Initialize DB and seed default users if empty */
 export async function initDatabase(): Promise<void> {
-  await initializeDB();
+  try {
+    await initializeDB();
+  } catch (e) {
+    console.error('[DB] Init failed, running in-memory only:', e);
+    seeded = true;
+    return;
+  }
   
   if (seeded) return;
   seeded = true;

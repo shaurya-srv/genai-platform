@@ -95,6 +95,18 @@ const LEVEL_LABELS: Record<string, { label: string; color: string }> = {
 
 // ==================== COMPONENT ====================
 
+const LEVEL_OPTIONS = [
+  { value: "chairman", label: "L1 — Chairman" },
+  { value: "distinguished_scientist", label: "L1 — Distinguished Scientist" },
+  { value: "outstanding_scientist", label: "L1 — Outstanding Scientist" },
+  { value: "scientist_g", label: "L2 — Scientist G" },
+  { value: "scientist_f", label: "L2 — Scientist F" },
+  { value: "scientist_e", label: "L2 — Scientist E" },
+  { value: "scientist_d", label: "L3 — Scientist D" },
+  { value: "scientist_c", label: "L3 — Scientist C" },
+  { value: "general_scientist", label: "L4 — General Scientist" },
+];
+
 export default function AdminPage() {
   const [tab, setTab] = useState<"overview" | "logins" | "activity" | "users">("overview");
   const [stats, setStats] = useState<Stats | null>(null);
@@ -102,17 +114,28 @@ export default function AdminPage() {
   const [audit, setAudit] = useState<AuditRecord[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
 
+  // Auth guard: check if user is logged in as ADMIN
   useEffect(() => {
+    const session = JSON.parse(localStorage.getItem("auth_session") || "{}");
+    if (!session.token || session.role !== "ADMIN") {
+      setAuthError("Access denied. ADMIN role required.");
+      setLoading(false);
+      return;
+    }
+
     async function load() {
       setLoading(true);
       try {
+        const headers = { Authorization: `Bearer ${session.token}` };
         const [statsRes, loginsRes, auditRes, usersRes] = await Promise.all([
-          fetch("/api/admin?section=stats"),
-          fetch("/api/admin?section=login_history"),
-          fetch("/api/admin?section=audit_trail"),
-          fetch("/api/admin?section=users"),
+          fetch("/api/admin?section=stats", { headers }),
+          fetch("/api/admin?section=login_history", { headers }),
+          fetch("/api/admin?section=audit_trail", { headers }),
+          fetch("/api/admin?section=users", { headers }),
         ]);
+        if (statsRes.status === 403) { setAuthError("Access denied. ADMIN role required."); return; }
         if (statsRes.ok) setStats(await statsRes.json());
         if (loginsRes.ok) setLogins(await loginsRes.json());
         if (auditRes.ok) setAudit(await auditRes.json());
@@ -123,9 +146,43 @@ export default function AdminPage() {
       setLoading(false);
     }
     load();
-    const interval = setInterval(load, 10000); // refresh every 10s
+    const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const handlePromote = async (userId: string, newLevel: string) => {
+    const session = JSON.parse(localStorage.getItem("auth_session") || "{}" );
+    await fetch("/api/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ action: "promote", userId, newRoleLevel: newLevel }),
+    });
+    // Refresh users
+    const res = await fetch("/api/admin?section=users", { headers: { Authorization: `Bearer ${session.token}` } });
+    if (res.ok) setUsers(await res.json());
+  };
+
+  const handleToggleActive = async (userId: string, currentActive: boolean) => {
+    const session = JSON.parse(localStorage.getItem("auth_session") || "{}" );
+    const action = currentActive ? "deactivate" : "activate";
+    await fetch("/api/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ action, userId }),
+    });
+    const res = await fetch("/api/admin?section=users", { headers: { Authorization: `Bearer ${session.token}` } });
+    if (res.ok) setUsers(await res.json());
+  };
+
+  if (authError) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#020617", color: "#ef4444", flexDirection: "column", gap: "1rem" }}>
+        <div style={{ fontSize: "2rem" }}>🔒</div>
+        <div style={{ fontSize: "1rem", fontWeight: 600 }}>{authError}</div>
+        <a href="/login" style={{ color: "#3b82f6", fontSize: "0.85rem" }}>← Back to Login</a>
+      </div>
+    );
+  }
 
   if (loading && !stats) {
     return (
@@ -304,19 +361,20 @@ export default function AdminPage() {
         {tab === "users" && (
           <div style={{ padding: "1.5rem", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
             <h3 style={{ fontSize: "0.9rem", fontWeight: 700, margin: "0 0 1rem" }}>👥 Registered Users ({users.length})</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "0.75rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "0.75rem" }}>
               {users.map((u) => {
                 const levelInfo = LEVEL_LABELS[u.roleLevel] || { label: u.roleLevel, color: "#64748b" };
                 return (
-                  <div key={u.userId} style={{ padding: "1rem", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div key={u.userId} style={{ padding: "1rem", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: `1px solid ${u.active ? "rgba(255,255,255,0.06)" : "rgba(239,68,68,0.2)"}`, opacity: u.active ? 1 : 0.6 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
                       <div style={{ width: 36, height: 36, borderRadius: 10, background: `${levelInfo.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", color: levelInfo.color, fontWeight: 700 }}>
                         {u.displayName.charAt(0)}
                       </div>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>{u.displayName}</div>
                         <div style={{ fontSize: "0.7rem", color: "#64748b" }}>@{u.username}</div>
                       </div>
+                      {!u.active && <span style={{ fontSize: "0.65rem", color: "#ef4444", fontWeight: 600 }}>DEACTIVATED</span>}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.5rem" }}>
                       <span style={{ padding: "0.15rem 0.5rem", borderRadius: 6, fontSize: "0.65rem", fontWeight: 600, background: `${levelInfo.color}20`, color: levelInfo.color }}>
@@ -334,6 +392,24 @@ export default function AdminPage() {
                     )}
                     <div style={{ fontSize: "0.65rem", color: "#475569", marginTop: "0.3rem" }}>
                       Last login: {u.lastLogin ? formatDate(u.lastLogin) : "Never"}
+                    </div>
+                    {/* Admin Controls */}
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+                      <select
+                        value={u.roleLevel}
+                        onChange={(e) => handlePromote(u.userId, e.target.value)}
+                        style={{ padding: "0.3rem 0.5rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#e2e8f0", fontSize: "0.7rem", cursor: "pointer" }}
+                      >
+                        {LEVEL_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value} style={{ background: "#1e293b" }}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleToggleActive(u.userId, u.active)}
+                        style={{ padding: "0.3rem 0.7rem", borderRadius: 6, border: "none", background: u.active ? "rgba(239,68,68,0.2)" : "rgba(16,185,129,0.2)", color: u.active ? "#ef4444" : "#10b981", fontSize: "0.7rem", fontWeight: 600, cursor: "pointer" }}
+                      >
+                        {u.active ? "Deactivate" : "Activate"}
+                      </button>
                     </div>
                   </div>
                 );

@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['ethers'],
+  serverExternalPackages: ['ethers', 'sql.js'],
   async headers() {
     return [
       {

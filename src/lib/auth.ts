@@ -669,6 +669,36 @@ export class AuthService {
     return true;
   }
 
+  /**
+   * Promote a user to a new role level
+   */
+  static promoteUser(userId: string, newLevel: RoleLevel): boolean {
+    const user = users.get(userId);
+    if (!user) return false;
+    
+    // Update role based on level
+    let newRole: PortalRole = 'OPERATOR';
+    if (newLevel === 'chairman' || newLevel === 'distinguished_scientist') newRole = 'ADMIN';
+    else if (newLevel === 'outstanding_scientist' || newLevel === 'scientist_g' || newLevel === 'scientist_f' || newLevel === 'scientist_e') newRole = 'APPROVER';
+    
+    user.roleLevel = newLevel;
+    user.role = newRole;
+    user.permissions = PORTAL_CONFIG[newRole].permissions;
+    users.set(userId, user);
+    return true;
+  }
+
+  /**
+   * Activate a user
+   */
+  static activateUser(userId: string): boolean {
+    const user = users.get(userId);
+    if (!user) return false;
+    user.active = true;
+    users.set(userId, user);
+    return true;
+  }
+
   // ==================== GOOGLE OAUTH ====================
 
   private static googleClientId = '';

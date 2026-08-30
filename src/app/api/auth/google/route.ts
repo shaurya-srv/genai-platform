@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
       const { verifySupabaseToken } = await import("@/lib/supabase");
       const { persistAuthUser } = await import("@/lib/db-init");
       const { AuthService } = await import("@/lib/auth");
+      const { lookupRole } = await import("@/lib/role-registry");
 
       const supabaseUser = await verifySupabaseToken(access_token);
       if (!supabaseUser) {
@@ -69,11 +70,13 @@ export async function POST(request: NextRequest) {
       );
 
       if (!existingUser) {
+        // Look up role from registry based on Google email
+        const roleInfo = lookupRole(supabaseUser.email);
         existingUser = AuthService.createUser(
           supabaseUser.email.split("@")[0],
           supabaseUser.name,
-          "OPERATOR",
-          "general_scientist"
+          roleInfo.portalRole,
+          roleInfo.roleLevel
         );
         if (existingUser) {
           existingUser.googleId = supabaseUser.id;

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isSupabaseConfigured, verifySupabaseToken } from "@/lib/supabase";
 import { AuthService } from "@/lib/auth";
 import { persistAuthUser } from "@/lib/db-init";
+import { lookupRole } from "@/lib/role-registry";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -52,11 +53,13 @@ export async function GET(request: NextRequest) {
   );
 
   if (!user) {
+    // Look up role from registry based on Google email
+    const roleInfo = lookupRole(supabaseUser.email);
     user = AuthService.createUser(
       supabaseUser.email.split("@")[0],
       supabaseUser.name,
-      "OPERATOR",
-      "general_scientist"
+      roleInfo.portalRole,
+      roleInfo.roleLevel
     );
     if (user) {
       user.googleId = supabaseUser.id;

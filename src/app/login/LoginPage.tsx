@@ -49,6 +49,25 @@ function LoginPageInner() {
       router.push(`/dashboard?portal=${userRole}&userId=${userId}`);
       return;
     }
+
+    // Handle Supabase code exchange (when Supabase sends code instead of tokens)
+    const supabaseCode = searchParams.get("supabase_code");
+    if (supabaseCode) {
+      // Exchange code for session via our API
+      fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "exchange", code: supabaseCode }),
+      }).then(r => r.json()).then(data => {
+        if (data.success && data.session && data.user) {
+          localStorage.setItem("auth_session", JSON.stringify(data.session));
+          localStorage.setItem("auth_user", JSON.stringify(data.user));
+          router.push(`/dashboard?portal=${data.user.role}&userId=${data.user.userId}`);
+        } else {
+          setError(data.error || "Failed to complete Google auth");
+        }
+      }).catch(() => setError("Connection error during auth exchange"));
+    }
   }, [searchParams, router]);
 
   // Step 1: Google sign-in — redirect to Google OAuth or use demo mode

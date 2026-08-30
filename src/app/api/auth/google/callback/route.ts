@@ -1,72 +1,125 @@
 /**
- * GET /api/auth/google/callback?code=...&state=...
+ * GET /api/auth/google/callback?code=...&access_token=...
  * 
- * Handles Google OAuth redirect after user consents.
- * Exchanges authorization code for access token,
- * fetches user profile from Google, creates or links account,
- * then redirects to dashboard with session.
+ * Handles Google OAuth redirect.
+ * Supabase handles the token exchange — we just need to capture the session
+ * and redirect to the login page with the tokens.
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { AuthService } from "@/lib/auth";
 import { persistAuthUser } from "@/lib/db-init";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  
+  // Supabase sends these params after successful OAuth
+  const accessToken = searchParams.get("access_token");
+  const refreshToken = searchParams.get("refresh_token");
   const code = searchParams.get("code");
-  const state = searchParams.get("state"); // Contains userId or portal info
   const error = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
 
-  // Handle Google returning an error (user denied consent, etc.)
+  // Handle errors
   if (error) {
-    const errorDesc = searchParams.get("error_description") || error;
     return NextResponse.redirect(
-      new URL(`/login?google_error=${encodeURIComponent(errorDesc)}`, request.url)
+      new URL(`/login?google_error=${encodeURIComponent(errorDescription || error)}`, request.url)
     );
   }
 
-  if (!code) {
-    return NextResponse.redirect(
-      new URL("/login?google_error=No+authorization+code+received", request.url)
-    );
-  }
+  // Supabase configured — handle the session
+  if (isSupabaseConfigured()) {
+    if (accessToken) {
+      // Direct access token from Supabase
+      try {
+        const { verifySupabaseToken } = await import("@/lib/supabase");
+        const supabaseUser = await verifySupabaseToken(accessToken);
 
-  try {
-    // Initialize Google OAuth config
-    AuthService.initializeGoogleOAuth();
+        if (!supabaseUser) {
+          return NextResponse.redirect(
+            new URL("/login?google_error=Failed+to+verify+Google+session", request.url)
+          );
+        }
 
-    // Build the redirect URI (must match what was used in the auth request)
-    const origin = request.nextUrl.origin;
-    const redirectUri = `${origin}/api/auth/google/callback`;
+        // Find or create user
+        const allUsers = AuthService.getAllUsers();
+        let user: typeof allUsers[0] | null | undefined = allUsers.find(u => u.googleId === supabaseUser.id || u.email === supabaseUser.email);
 
-    // Exchange code for tokens and get user info
-    const result = await AuthService.handleGoogleCallback(code, redirectUri);
+        if (!user) {
+          user = AuthService.createUser(
+            supabaseUser.email.split("@")[0],
+            supabaseUser.name,
+            "OPERATOR",
+            "general_scientist"
+          );
+          if (user) {
+            user.googleId = supabaseUser.id;
+            user.googleEmail = supabaseUser.email;
+            user.avatar = supabaseUser.avatar;
+            user.authProvider = "google";
+            persistAuthUser(user);
+          }
+        } else {
+          user.lastLogin = Date.now();
+          user.googleId = supabaseUser.id;
+          user.googleEmail = supabaseUser.email;
+          user.authProvider = "both";
+          persistAuthUser(user);
+        }
 
-    if (!result.success || !result.user || !result.session) {
-      return NextResponse.redirect(
-        new URL(`/login?google_error=${encodeURIComponent(result.error || "Authentication failed")}`, request.url)
-      );
+        if (!user) {
+          return NextResponse.redirect(
+            new URL("/login?google_error=Failed+to+create+user", request.url)
+          );
+        }
+
+        const session = AuthService.createSession(user);
+
+        // Redirect to login page with session data
+        const redirectUrl = new URL("/login", request.url);
+        redirectUrl.searchParams.set("google_success", "true");
+        redirectUrl.searchParams.set("session_token", session.token);
+        redirectUrl.searchParams.set("user_id", user.userId);
+        redirectUrl.searchParams.set("user_name", user.displayName);
+        redirectUrl.searchParams.set("user_role", user.role);
+        redirectUrl.searchParams.set("user_level", user.roleLevel);
+        redirectUrl.searchParams.set("google_email", user.googleEmail || "");
+
+        return NextResponse.redirect(redirectUrl);
+      } catch (e) {
+        return NextResponse.redirect(
+          new URL(`/login?google_error=${encodeURIComponent(String(e))}`, request.url)
+        );
+      }
     }
 
-    // Persist to database
-    persistAuthUser(result.user);
-
-    // Redirect to dashboard with session data in URL params
-    // The login page will read these and store in localStorage
-    const redirectUrl = new URL("/login", request.url);
-    redirectUrl.searchParams.set("google_success", "true");
-    redirectUrl.searchParams.set("session_token", result.session.token);
-    redirectUrl.searchParams.set("user_id", result.user.userId);
-    redirectUrl.searchParams.set("user_name", result.user.displayName);
-    redirectUrl.searchParams.set("user_role", result.user.role);
-    redirectUrl.searchParams.set("user_level", result.user.roleLevel);
-    redirectUrl.searchParams.set("google_email", result.user.googleEmail || result.user.email || "");
-    redirectUrl.searchParams.set("is_new", result.isNewUser ? "true" : "false");
-
-    return NextResponse.redirect(redirectUrl);
-  } catch (e) {
-    return NextResponse.redirect(
-      new URL(`/login?google_error=${encodeURIComponent(String(e))}`, request.url)
-    );
+    // If we got a code but no access_token, Supabase may handle it client-side
+    // Redirect to login with the code so client can exchange it
+    if (code) {
+      const redirectUrl = new URL("/login", request.url);
+      redirectUrl.searchParams.set("supabase_code", code);
+      return NextResponse.redirect(redirectUrl);
+    }
   }
+
+  // Fallback — Supabase not configured, try demo mode
+  if (code === "demo-code" || !isSupabaseConfigured()) {
+    const result = await AuthService.handleGoogleCallback("demo-code");
+    if (result.success && result.user && result.session) {
+      persistAuthUser(result.user);
+      const redirectUrl = new URL("/login", request.url);
+      redirectUrl.searchParams.set("google_success", "true");
+      redirectUrl.searchParams.set("session_token", result.session.token);
+      redirectUrl.searchParams.set("user_id", result.user.userId);
+      redirectUrl.searchParams.set("user_name", result.user.displayName);
+      redirectUrl.searchParams.set("user_role", result.user.role);
+      redirectUrl.searchParams.set("user_level", result.user.roleLevel);
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
+
+  return NextResponse.redirect(
+    new URL("/login?google_error=No+authentication+data+received", request.url)
+  );
 }

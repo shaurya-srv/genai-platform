@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@prisma/client": "^7.10.0",
+    "@supabase/supabase-js": "^2.112.4",
     "@types/nodemailer": "^8.0.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",

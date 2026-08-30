@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApprovalChainService } from "@/lib/approval-chain";
 import { AuthService, ROLE_LEVEL_HIERARCHY } from "@/lib/auth";
 import { HashChain } from "@/lib/hashchain";
+import { ApprovalChainDB } from "@/lib/db-adapter";
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,6 +42,26 @@ export async function POST(request: NextRequest) {
           submittedByLevel: user.roleLevel,
           metadata,
         });
+
+        // Persist to database
+        try {
+          ApprovalChainDB.save({
+            id: request_.id,
+            transformationId: request_.transformationId,
+            title: request_.title,
+            contentPreview: request_.contentPreview,
+            outputTypes: request_.outputTypes,
+            riskLevel: request_.riskLevel,
+            submittedBy: request_.submittedBy,
+            submittedByName: request_.submittedByName,
+            submittedByLevel: request_.submittedByLevel,
+            submittedAt: request_.submittedAt,
+            status: request_.status,
+            currentStep: request_.currentStep,
+            deadline: request_.deadline,
+            chain: request_.chain,
+          });
+        } catch (e) { console.error('[DB] Failed to save approval chain:', e); }
 
         // Record on hash chain
         HashChain.appendBlock({
@@ -83,6 +104,29 @@ export async function POST(request: NextRequest) {
           decision,
           comments: comments || "",
         });
+
+        // Persist to database
+        try {
+          ApprovalChainDB.updateStatus(requestId, result.request.status, result.request.currentStep);
+          const activeStep = result.request.chain.find((s: any) => s.status === 'ACTIVE');
+          if (activeStep) {
+            ApprovalChainDB.updateStep(requestId, activeStep.stepNumber, {
+              status: 'ACTIVE',
+            });
+          }
+          const completedStep = result.request.chain.find((s: any) => s.status === 'COMPLETED');
+          if (completedStep) {
+            ApprovalChainDB.updateStep(requestId, completedStep.stepNumber, {
+              approverId: completedStep.approverId,
+              approverName: completedStep.approverName,
+              decision: completedStep.decision,
+              decisionAt: completedStep.decisionAt,
+              comments: completedStep.comments,
+              signatureHash: completedStep.signatureHash,
+              status: 'COMPLETED',
+            });
+          }
+        } catch (e) { console.error('[DB] Failed to update approval:', e); }
 
         // Record on hash chain
         HashChain.appendBlock({

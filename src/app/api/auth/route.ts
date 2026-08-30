@@ -2,9 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { AuthService, PORTAL_CONFIG, PortalRole } from "@/lib/auth";
 import { generateQRCodeSVG } from "@/lib/qr-code";
 import { getTOTPRemaining } from "@/lib/totp";
+import { initDatabase, persistAuthUser, getDBStats } from "@/lib/db-init";
+
+// Initialize DB on first request
+let dbReady = false;
+async function ensureDB() {
+  if (!dbReady) {
+    await initDatabase();
+    dbReady = true;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureDB();
     const body = await request.json();
     const { action } = body;
 
@@ -24,6 +35,9 @@ export async function POST(request: NextRequest) {
         if (!result.success) {
           return NextResponse.json({ error: result.error }, { status: 401 });
         }
+
+        // Persist login to DB
+        if (result.user) persistAuthUser(result.user);
 
         return NextResponse.json({
           success: true,
@@ -115,6 +129,7 @@ export async function POST(request: NextRequest) {
         if (!user) {
           return NextResponse.json({ error: "Username already exists" }, { status: 409 });
         }
+        persistAuthUser(user);
         return NextResponse.json({ success: true, user });
       }
 
@@ -136,6 +151,7 @@ export async function POST(request: NextRequest) {
           result.user.role = loginPortal;
           result.user.portalUrl = `/dashboard?portal=${loginPortal}`;
         }
+        if (result.user) persistAuthUser(result.user);
         return NextResponse.json({
           success: true,
           session: result.session,
@@ -156,12 +172,16 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  await ensureDB();
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action") || "portals";
 
   switch (action) {
     case "portals":
       return NextResponse.json(PORTAL_CONFIG);
+
+    case "db_stats":
+      return NextResponse.json(getDBStats());
 
     case "users":
       return NextResponse.json(AuthService.getAllUsers().map(u => ({

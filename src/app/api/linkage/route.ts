@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LinkageService, Platform } from "@/lib/linkage";
 import { HashChain } from "@/lib/hashchain";
+import { LinkedAccountDB } from "@/lib/db-adapter";
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +26,17 @@ export async function POST(request: NextRequest) {
         }
 
         const account = LinkageService.demoLink(platform as Platform, userId);
+
+        // Persist to database
+        try {
+          LinkedAccountDB.save({
+            id: account.id, userId: account.userId, platform: account.platform,
+            accountId: account.accountId, accountName: account.accountName,
+            accessToken: account.accessToken, refreshToken: account.refreshToken,
+            tokenExpiresAt: account.tokenExpiresAt, scope: account.scope,
+            status: account.status, linkedAt: account.linkedAt, metadata: account.metadata,
+          });
+        } catch (e) { console.error('[DB] Failed to save linked account:', e); }
 
         HashChain.appendBlock({
           eventType: "ROLE_CHANGE",

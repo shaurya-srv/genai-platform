@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  username        String   @unique
+  displayName     String
+  email           String?
+  role            String   // OPERATOR, APPROVER, ADMIN, AUDITOR
+  roleLevel       String   // chairman, scientist_g, etc.
+  portalUrl       String
+  permissions     String   // JSON array as string
+  publicKey       String
+  avatar          String?
+  googleId        String?
+  googleEmail     String?
+  authProvider     String   @default("local") // google, local, both
+  password        String
+  createdAt       DateTime @default(now())
+  lastLogin       DateTime?
+  mfaEnabled      Boolean  @default(false)
+  mfaEnrolled     Boolean  @default(false)
+  totpSecret      String?
+  recoveryCodes   String?  // JSON array as string
+  active          Boolean  @default(true)
+
+  linkedAccounts  LinkedAccount[]
+  approvalRequests ApprovalChainRequest[]
+  approvals       ApprovalStep[]
+}
+
+model LinkedAccount {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [userId])
+  platform        String   // linkedin, twitter, email
+  accountId       String   // Platform's user/org ID
+  accountName     String
+  accountEmail    String?
+  avatarUrl       String?
+  accessToken     String?
+  refreshToken    String?
+  tokenExpiresAt  DateTime?
+  scope           String?  // JSON array as string
+  status          String   @default("LINKED") // LINKED, EXPIRED, ERROR
+  linkedAt        DateTime @default(now())
+  lastUsedAt      DateTime?
+  lastError       String?
+  metadata        String   @default("{}") // JSON object as string
+}
+
+model ApprovalChainRequest {
+  id                String   @id @default(cuid())
+  transformationId  String
+  title             String
+  contentPreview    String
+  outputTypes       String   // JSON array as string
+  riskLevel         String   // LOW, MEDIUM, HIGH, CRITICAL
+  submittedBy       String
+  user              User     @relation(fields: [submittedBy], references: [userId])
+  submittedByName   String
+  submittedByLevel  String
+  submittedAt       DateTime @default(now())
+  status            String   @default("FINALISED") // FINALISED, IN_REVIEW, APPROVED, REJECTED, PUBLISHED, PUBLISH_FAILED, EXPIRED
+  currentStep       Int      @default(0)
+  deadline          DateTime
+  publishedAt       DateTime?
+  publishResults    String?  // JSON array as string
+  metadata          String   @default("{}") // JSON object as string
+
+  chainSteps        ApprovalStep[]
+}
+
+model ApprovalStep {
+  id                String   @id @default(cuid())
+  requestId         String
+  request           ApprovalChainRequest @relation(fields: [requestId], references: [id])
+  stepNumber        Int
+  requiredLevel     String
+  requiredRoleName  String
+  approverId        String?
+  approver          User?    @relation(fields: [approverId], references: [userId])
+  approverName      String?
+  decision          String?  // APPROVE, REJECT, ABSTAIN
+  decisionAt        DateTime?
+  comments          String?
+  signatureHash     String?
+  status            String   @default("PENDING") // PENDING, ACTIVE, COMPLETED, SKIPPED
+}
+
+model HashChainBlock {
+  id          String   @id @default(cuid())
+  blockId     String   @unique
+  blockNumber Int
+  eventType   String
+  actorId     String
+  actorName   String
+  actorRole   String
+  contentHash String
+  prevHash    String
+  merkleRoot  String
+  timestamp   DateTime @default(now())
+  signature   String
+  metadata    String   @default("{}")
+}

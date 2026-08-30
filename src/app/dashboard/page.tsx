@@ -56,6 +56,15 @@ function DashboardInner() {
   const [pptxDownloading, setPptxDownloading] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
+  
+  // Approval chain state
+  const [chainRequests, setChainRequests] = useState<any[]>([]);
+  const [finalising, setFinalising] = useState<string | null>(null);
+  const [approvalComment, setApprovalComment] = useState("");
+  
+  // Linkage state
+  const [linkageStatus, setLinkageStatus] = useState<Record<string, any>>({});
+  const [linkageLoading, setLinkageLoading] = useState("");
 
   const markImageLoaded = (url: string) => setImageLoadStates(prev => ({ ...prev, [url]: true }));
   const markImageError = (url: string) => setImageLoadStates(prev => ({ ...prev, [url]: 'error' }));
@@ -93,6 +102,23 @@ function DashboardInner() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [transformMedia]);
+
+  // Load approval chain requests and linkage status
+  useEffect(() => {
+    if (activeSection === 'approval' && user) {
+      fetch(`/api/approval-chain?action=pending&userId=${user.userId}&userLevel=${user.roleLevel}`).then(r => r.json()).then(data => {
+        if (Array.isArray(data)) setChainRequests(data);
+      }).catch(() => {});
+    }
+  }, [activeSection, user]);
+
+  useEffect(() => {
+    if (activeSection === 'linkage' && user) {
+      fetch(`/api/linkage?action=status&userId=${user.userId}`).then(r => r.json()).then(data => {
+        if (data && typeof data === 'object') setLinkageStatus(data);
+      }).catch(() => {});
+    }
+  }, [activeSection, user]);
 
   // Generation Hub state
   const [genPrompt, setGenPrompt] = useState("");
@@ -138,6 +164,88 @@ function DashboardInner() {
       else { addNotification(data.error || "Transformation failed", "error"); }
     } catch { addNotification("Connection error", "error"); }
     clearInterval(stepTimer); setProcessing(false);
+  };
+
+  const handleFinalise = async (result: any) => {
+    if (!user) return;
+    setFinalising(result.type);
+    try {
+      const res = await fetch("/api/approval-chain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "finalise",
+          userId: user.userId,
+          transformationId: result.type + "-" + Date.now(),
+          title: result.title || result.type,
+          contentPreview: typeof result.content === "string" ? result.content.substring(0, 200) : "",
+          outputTypes: selectedOutputs,
+          metadata: result.metadata,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        addNotification(`Finalised! Chain has ${data.request.chain.length} approval step(s)`, "success");
+        setChainRequests(prev => [data.request, ...prev]);
+      } else {
+        addNotification(data.error || "Failed to finalise", "error");
+      }
+    } catch { addNotification("Connection error", "error"); }
+    setFinalising(null);
+  };
+
+  const handleApprovalDecision = async (requestId: string, decision: "APPROVE" | "REJECT") => {
+    if (!user) return;
+    try {
+      const res = await fetch("/api/approval-chain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "approve",
+          userId: user.userId,
+          requestId,
+          decision,
+          comments: approvalComment,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        addNotification(decision === "APPROVE" ? "Approved!" : "Rejected", decision === "APPROVE" ? "success" : "error");
+        setChainRequests(prev => prev.map(r => r.id === requestId ? data.request : r));
+        if (data.fullyApproved) {
+          addNotification("🎉 All approvals received! Auto-publishing...", "success");
+          // Trigger auto-publish
+          fetch("/api/linkage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "auto_publish", userId: user.userId, content: data.request.contentPreview, title: data.request.title }),
+          });
+        }
+      } else {
+        addNotification(data.error || "Action failed", "error");
+      }
+    } catch { addNotification("Connection error", "error"); }
+    setApprovalComment("");
+  };
+
+  const handleLinkAccount = async (platform: string) => {
+    if (!user) return;
+    setLinkageLoading(platform);
+    try {
+      const res = await fetch("/api/linkage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "demo_link", userId: user.userId, platform }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        addNotification(`Linked ${platform} account!`, "success");
+        setLinkageStatus(prev => ({ ...prev, [platform]: { linked: true, accountName: data.account.accountName, status: "LINKED" } }));
+      } else {
+        addNotification(data.error || "Failed to link", "error");
+      }
+    } catch { addNotification("Connection error", "error"); }
+    setLinkageLoading("");
   };
 
   const handleGenerate = async () => {
@@ -606,6 +714,19 @@ function DashboardInner() {
                       )}
                     </div>
                     ); })()}
+
+                    {/* Finalise — Submit for approval chain */}
+                    {results.length > 0 && (
+                      <div style={{ marginTop: '1.5rem', padding: '1rem', borderRadius: 10, background: 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(6,182,212,0.1))', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981', marginBottom: '0.5rem' }}>✅ Ready to Finalise?</div>
+                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.75rem' }}>Submit for approval. Routes through command chain based on content risk level, then auto-publishes to linked platforms.</p>
+                        <button
+                          onClick={async () => { for (const r of results) await handleFinalise(r); }}
+                          disabled={finalising !== null}
+                          style={{ padding: '0.6rem 1.5rem', borderRadius: 8, border: 'none', background: finalising ? '#475569' : 'linear-gradient(135deg, #10b981, #06b6d4)', color: '#fff', fontSize: '0.85rem', fontWeight: 700, cursor: finalising ? 'not-allowed' : 'pointer' }}
+                        >{finalising ? '⏳ Submitting...' : '🏁 Finalise & Submit for Approval'}</button>
+                      </div>
+                    )}
                 </div>
               )}
             </div>
@@ -699,29 +820,46 @@ function DashboardInner() {
           {/* RESULTS SECTION */}
           {activeSection === "approval" && (
             <div>
-              <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#10b981", marginBottom: "1rem" }}>✍️ Multi-Sign Approval</h2>
-              {showResults && results.length > 0 ? (
+              <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#10b981", marginBottom: "0.5rem" }}>✍️ Command Chain Approval</h2>
+              <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "1rem" }}>Content goes through role-based approval chain. Higher risk = more approvals needed.</p>
+              {chainRequests.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                  {results.map((r: any, i: number) => (
+                  {chainRequests.map((cr: any, i: number) => (
                     <div key={i} style={{ padding: "1rem", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                        <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#f1f5f9" }}>{r.type}</span>
-                        <span style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem", borderRadius: 4, background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>Pending Approval</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                        <div>
+                          <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#f1f5f9" }}>{cr.title}</span>
+                          <span style={{ marginLeft: '0.5rem', fontSize: '0.6rem', padding: '0.15rem 0.4rem', borderRadius: 4, background: cr.riskLevel === 'CRITICAL' ? 'rgba(239,68,68,0.15)' : cr.riskLevel === 'HIGH' ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)', color: cr.riskLevel === 'CRITICAL' ? '#ef4444' : cr.riskLevel === 'HIGH' ? '#f59e0b' : '#3b82f6' }}>{cr.riskLevel}</span>
+                        </div>
+                        <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: 4, background: cr.status === 'APPROVED' ? 'rgba(16,185,129,0.15)' : cr.status === 'REJECTED' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: cr.status === 'APPROVED' ? '#10b981' : cr.status === 'REJECTED' ? '#ef4444' : '#f59e0b' }}>{cr.status}</span>
                       </div>
-                      <p style={{ fontSize: "0.8rem", color: "#94a3b8", lineHeight: 1.5, maxHeight: 100, overflow: "hidden" }}>{typeof r.content === "string" ? r.content.substring(0, 200) : "Generated content"}...</p>
-                      <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem" }}>
-                        <button style={{ padding: "0.4rem 1rem", borderRadius: 6, border: "none", background: "rgba(16,185,129,0.15)", color: "#10b981", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>✅ Approve</button>
-                        <button style={{ padding: "0.4rem 1rem", borderRadius: 6, border: "none", background: "rgba(239,68,68,0.15)", color: "#ef4444", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>❌ Reject</button>
-                        <button style={{ padding: "0.4rem 1rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#94a3b8", fontSize: "0.75rem", cursor: "pointer" }}>👁️ Review</button>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.5rem' }}>Submitted by {cr.submittedByName} • {cr.outputTypes?.join(', ')} • {cr.chain?.length} approval step(s)</div>
+                      <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                        {cr.chain?.map((step: any, si: number) => (
+                          <div key={si} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <div style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: step.status === 'COMPLETED' && step.decision === 'APPROVE' ? 'rgba(16,185,129,0.15)' : step.status === 'COMPLETED' && step.decision === 'REJECT' ? 'rgba(239,68,68,0.15)' : step.status === 'ACTIVE' ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', border: step.status === 'ACTIVE' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)' }}>
+                              <div style={{ fontSize: '0.6rem', color: step.status === 'COMPLETED' && step.decision === 'APPROVE' ? '#10b981' : step.status === 'ACTIVE' ? '#3b82f6' : '#64748b' }}>{step.status === 'COMPLETED' ? (step.decision === 'APPROVE' ? '✅' : '❌') : step.status === 'ACTIVE' ? '🔵' : '⏳'} {step.requiredRoleName}</div>
+                              {step.approverName && <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: 2 }}>{step.approverName}</div>}
+                            </div>
+                            {si < cr.chain.length - 1 && <span style={{ color: '#475569', fontSize: '0.7rem' }}>→</span>}
+                          </div>
+                        ))}
                       </div>
+                      {cr.status !== 'APPROVED' && cr.status !== 'REJECTED' && cr.status !== 'PUBLISHED' && (
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button onClick={() => handleApprovalDecision(cr.id, 'APPROVE')} style={{ padding: '0.4rem 1rem', borderRadius: 6, border: 'none', background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>✅ Approve</button>
+                          <button onClick={() => handleApprovalDecision(cr.id, 'REJECT')} style={{ padding: '0.4rem 1rem', borderRadius: 6, border: 'none', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>❌ Reject</button>
+                          <input value={approvalComment} onChange={e => setApprovalComment(e.target.value)} placeholder="Comments..." style={{ flex: 1, padding: '0.4rem 0.75rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.05)', color: '#f1f5f9', fontSize: '0.75rem', outline: 'none' }} />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div style={{ textAlign: "center", padding: "3rem", color: "#64748b" }}>
-                  <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>✍️</div>
-                  <p style={{ fontSize: "0.9rem" }}>No items pending approval</p>
-                  <p style={{ fontSize: "0.75rem" }}>Submit a transformation first, then review here</p>
+                <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✍️</div>
+                  <p style={{ fontSize: '0.9rem' }}>No approval requests yet</p>
+                  <p style={{ fontSize: '0.75rem' }}>Transform content, then click Finalise to start the approval chain</p>
                 </div>
               )}
             </div>
@@ -780,15 +918,25 @@ function DashboardInner() {
 
           {/* LINKAGE */}
           {activeSection === "linkage" && (<div>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#0ea5e9", marginBottom: "1rem" }}>🔗 External Linkage</h2>
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#0ea5e9", marginBottom: "0.5rem" }}>🔗 External Linkage</h2>
+            <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "1rem" }}>Link social accounts to auto-publish approved content.</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
-              {[{ n: "Email", i: "📧" }, { n: "LinkedIn", i: "💼" }, { n: "X (Twitter)", i: "🐦" }].map((x, i) => (
-                <div key={i} style={{ padding: "1.25rem", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", textAlign: "center" }}>
-                  <div style={{ fontSize: "1.75rem", marginBottom: "0.5rem" }}>{x.i}</div>
-                  <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#f1f5f9", marginBottom: "0.25rem" }}>{x.n}</div>
-                  <div style={{ fontSize: "0.7rem", color: "#64748b", marginBottom: "0.75rem" }}>Not linked</div>
-                  <button style={{ padding: "0.4rem 1rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: "0.75rem", cursor: "pointer" }}>Link Account</button>
-                </div>))}
+              {[{ id: 'linkedin', n: 'LinkedIn', i: '💼', c: '#0A66C2', d: 'Share professional posts and articles' }, { id: 'twitter', n: 'X (Twitter)', i: '🐦', c: '#1DA1F2', d: 'Post tweets and threads' }, { id: 'email', n: 'Email', i: '📧', c: '#EA4335', d: 'Send newsletters and notifications' }].map((x) => {
+                const st = linkageStatus[x.id];
+                const isLinked = st?.linked;
+                return (
+                <div key={x.id} style={{ padding: '1.25rem', borderRadius: 10, background: isLinked ? `${x.c}10` : 'rgba(255,255,255,0.03)', border: `1px solid ${isLinked ? `${x.c}40` : 'rgba(255,255,255,0.06)'}`, textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{x.i}</div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '0.25rem' }}>{x.n}</div>
+                  <div style={{ fontSize: '0.7rem', color: isLinked ? '#10b981' : '#64748b', marginBottom: '0.75rem' }}>{isLinked ? `✅ ${st.accountName}` : 'Not linked'}</div>
+                  <div style={{ fontSize: '0.65rem', color: '#64748b', marginBottom: '0.75rem' }}>{x.d}</div>
+                  {isLinked ? (
+                    <button onClick={() => handleLinkAccount(x.id)} style={{ padding: '0.4rem 1rem', borderRadius: 6, border: `1px solid ${x.c}40`, background: 'transparent', color: x.c, fontSize: '0.75rem', cursor: 'pointer' }}>Unlink</button>
+                  ) : (
+                    <button disabled={linkageLoading === x.id} onClick={() => handleLinkAccount(x.id)} style={{ padding: '0.4rem 1rem', borderRadius: 6, border: 'none', background: linkageLoading === x.id ? '#475569' : `linear-gradient(135deg, ${x.c}, ${x.c}cc)`, color: '#fff', fontSize: '0.75rem', fontWeight: 600, cursor: linkageLoading === x.id ? 'not-allowed' : 'pointer' }}>{linkageLoading === x.id ? '⏳ Linking...' : '🔗 Link Account'}</button>
+                  )}
+                </div>);
+              })}
             </div>
           </div>)}
 

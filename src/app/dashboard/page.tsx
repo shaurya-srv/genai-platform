@@ -192,9 +192,7 @@ function GeneratedMedia({ results, userId }: { results: any[]; userId: string })
       }).then(r => r.json()).then(d => { if (d.success && d.media) setMediaData(d.media); }).catch(() => {});
     }
   }, [results, userId]);
-
   if (!mediaData) return null;
-
   return (
     <div className="space-y-4">
       {mediaData.image?.url && (
@@ -212,6 +210,399 @@ function GeneratedMedia({ results, userId }: { results: any[]; userId: string })
                 Open Full Size ↗
               </a>
             </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ─────────── DLP Scanner ─────────── */
+const DLP_PATTERNS: { name: string; pattern: RegExp; severity: "HIGH" | "MEDIUM" | "LOW"; category: string }[] = [
+  { name: "Email Address", pattern: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, severity: "MEDIUM", category: "PII" },
+  { name: "Phone Number", pattern: /(?:\+91[\s-]?)?\d{10}|(?:\+91[\s-]?)?\d{5}[\s-]?\d{5}|\(\d{3}\)\s?\d{3}-?\d{4}/g, severity: "MEDIUM", category: "PII" },
+  { name: "Aadhaar Number", pattern: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, severity: "HIGH", category: "Govt ID" },
+  { name: "PAN Number", pattern: /\b[A-Z]{5}\d{4}[A-Z]\b/g, severity: "HIGH", category: "Govt ID" },
+  { name: "Credit Card", pattern: /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b/g, severity: "HIGH", category: "Financial" },
+  { name: "SSN / Passport", pattern: /\b\d{3}-\d{2}-\d{4}\b|\b[A-Z]\d{7}\b/g, severity: "HIGH", category: "Govt ID" },
+  { name: "IP Address", pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, severity: "LOW", category: "Network" },
+  { name: "Password / Secret", pattern: /(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["']?\S{8,}["']?/gi, severity: "HIGH", category: "Credentials" },
+  { name: "Classified / Secret", pattern: /\b(TOP SECRET|SECRET|CONFIDENTIAL|RESTRICTED|CLASSIFIED|VERIFIED|COSMIC|NATO SECRET)\b/gi, severity: "HIGH", category: "Classification" },
+  { name: "Financial Amount", pattern: /(?:₹|INR|USD|EUR|GBP|\$)\s?\d{1,3}(?:,\d{2,3})*(?:\.\d{2})?/g, severity: "LOW", category: "Financial" },
+  { name: "Date of Birth", pattern: /\b(?:DOB|Date of Birth|born on)[:\s]+\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/gi, severity: "MEDIUM", category: "PII" },
+  { name: "Address Pattern", pattern: /\b\d{1,5}\s[\w\s]{2,40}(?:Street|St|Road|Rd|Avenue|Ave|Boulevard|Blvd|Lane|Ln|Drive|Dr|Colony|Nagar|Marg)\b/gi, severity: "MEDIUM", category: "PII" },
+];
+
+function scanContent(text: string) {
+  const findings: { name: string; severity: string; category: string; matches: string[] }[] = [];
+  for (const rule of DLP_PATTERNS) {
+    const matches = [...new Set((text.match(rule.pattern) || []).map(m => m.trim()))];
+    if (matches.length > 0) {
+      findings.push({ name: rule.name, severity: rule.severity, category: rule.category, matches });
+    }
+  }
+  return findings;
+}
+
+function DLPScannerSection() {
+  const [scanInput, setScanInput] = useState("");
+  const [findings, setFindings] = useState<ReturnType<typeof scanContent>>([]);
+  const [scanned, setScanned] = useState(false);
+  const [scanHistory, setScanHistory] = useState<{ input: string; findings: ReturnType<typeof scanContent>; time: string }[]>([]);
+
+  const handleScan = () => {
+    if (!scanInput.trim()) return;
+    const results = scanContent(scanInput);
+    setFindings(results);
+    setScanned(true);
+    setScanHistory(prev => [{ input: scanInput.substring(0, 100), findings: results, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 10));
+  };
+
+  const severityColor: Record<string, string> = { HIGH: "text-[#C8442C] bg-[#C8442C]/10 border-[#C8442C]/20", MEDIUM: "text-[#D4654A] bg-[#D4654A]/10 border-[#D4654A]/20", LOW: "text-[#4DB8C7] bg-[#4DB8C7]/10 border-[#4DB8C7]/20" };
+  const highCount = findings.filter(f => f.severity === "HIGH").length;
+  const medCount = findings.filter(f => f.severity === "MEDIUM").length;
+  const lowCount = findings.filter(f => f.severity === "LOW").length;
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-[#1A1A1A] border-white/[0.06]">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-[15px] font-normal text-white flex items-center gap-2">
+            <Shield className="w-4 h-4 text-[#8B6CC7]" /> Data Loss Prevention Scanner
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Textarea
+            value={scanInput}
+            onChange={e => setScanInput(e.target.value)}
+            placeholder="Paste content to scan for sensitive data, PII, classified information, credentials..."
+            className="min-h-[140px] bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/25 font-light text-[13px] resize-y"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-white/30">{scanInput.length} characters &middot; {DLP_PATTERNS.length} detection rules</span>
+            <Button onClick={handleScan} disabled={!scanInput.trim()} className="bg-[#8B6CC7] hover:bg-[#7B5CB7] text-white text-[13px] font-medium">
+              <Eye className="w-4 h-4 mr-2" /> Scan Content
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {scanned && (
+        <Card className="bg-[#1A1A1A] border-white/[0.06]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[15px] font-normal flex items-center gap-2">
+              {findings.length === 0 ? (
+                <><CheckCircle className="w-4 h-4 text-[#8ED7A3]" /><span className="text-[#8ED7A3]">No Sensitive Data Detected</span></>
+              ) : (
+                <><AlertTriangle className="w-4 h-4 text-[#D4654A]" /><span className="text-[#D4654A]">{findings.length} Finding{findings.length !== 1 ? "s" : ""} Detected</span></>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Summary bar */}
+            <div className="flex gap-3 mb-4">
+              <div className="flex-1 p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+                <div className="text-2xl font-light text-[#C8442C]">{highCount}</div>
+                <div className="text-[10px] text-white/30 mt-0.5">HIGH</div>
+              </div>
+              <div className="flex-1 p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+                <div className="text-2xl font-light text-[#D4654A]">{medCount}</div>
+                <div className="text-[10px] text-white/30 mt-0.5">MEDIUM</div>
+              </div>
+              <div className="flex-1 p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+                <div className="text-2xl font-light text-[#4DB8C7]">{lowCount}</div>
+                <div className="text-[10px] text-white/30 mt-0.5">LOW</div>
+              </div>
+            </div>
+            {findings.map((f, i) => (
+              <div key={i} className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-medium text-white/80">{f.name}</span>
+                    <span className="text-[10px] text-white/30">{f.category}</span>
+                  </div>
+                  <Badge className={`text-[10px] border ${severityColor[f.severity]}`}>{f.severity}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {f.matches.map((m, mi) => (
+                    <span key={mi} className="px-2 py-0.5 rounded bg-black/30 text-[11px] text-white/50 font-mono">{m.length > 40 ? m.substring(0, 40) + "..." : m}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {scanHistory.length > 0 && (
+        <Card className="bg-[#1A1A1A] border-white/[0.06]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[13px] font-normal text-white/50">Scan History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {scanHistory.map((h, i) => (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
+                  <span className="text-[12px] text-white/40 truncate flex-1">{h.input}...</span>
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    <Badge variant="outline" className={`text-[9px] border ${h.findings.length > 0 ? "border-[#C8442C]/30 text-[#C8442C]" : "border-[#8ED7A3]/30 text-[#8ED7A3]"}`}>
+                      {h.findings.length > 0 ? `${h.findings.length} issues` : "Clean"}
+                    </Badge>
+                    <span className="text-[10px] text-white/20">{h.time}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ─────────── Analysis ─────────── */
+function AnalysisSection({ results, showResults }: { results: any[]; showResults: boolean }) {
+  const [analysisResults, setAnalysisResults] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (showResults && results.length > 0) {
+      const analyzed = results.map((r: any) => {
+        const content = typeof r.content === "string" ? r.content : JSON.stringify(r.content || "");
+        const wordCount = content.split(/\s+/).filter(Boolean).length;
+        const sentenceCount = content.split(/[.!?]+/).filter(Boolean).length;
+        const paragraphCount = content.split(/\n\n+/).filter(Boolean).length;
+        const hasHeaders = /^#{1,6}\s|\*\*[^*]+\*\*/m.test(content) || content.split("\n").some((l: string) => l.length > 0 && l === l.toUpperCase() && l.length < 60);
+        const bulletPoints = (content.match(/^[\s]*[-*•]\s/gm) || []).length;
+        const links = (content.match(/https?:\/\//g) || []).length;
+        const numbers = (content.match(/\d+/g) || []).length;
+        const hashtags = (content.match(/#\w+/g) || []).length;
+        const mentions = (content.match(/@\w+/g) || []).length;
+        const emojis = (content.match(/[\u{1F300}-\u{1F9FF}]/gu) || []).length;
+
+        let qualityScore = 50;
+        if (wordCount > 50) qualityScore += 10;
+        if (wordCount > 200) qualityScore += 10;
+        if (sentenceCount > 3) qualityScore += 5;
+        if (hasHeaders) qualityScore += 5;
+        if (bulletPoints > 0) qualityScore += 5;
+        if (r.type === "twitter" && hashtags > 0) qualityScore += 5;
+        if (r.type === "linkedin" && wordCount > 100) qualityScore += 10;
+        qualityScore = Math.min(qualityScore, 100);
+
+        return {
+          type: r.type,
+          title: r.title || r.type,
+          metrics: {
+            wordCount, sentenceCount, paragraphCount, bulletPoints,
+            links, numbers, hashtags, mentions, emojis, qualityScore,
+            estimatedReadTime: Math.max(1, Math.ceil(wordCount / 200)) + " min",
+          }
+        };
+      });
+      setAnalysisResults(analyzed);
+    }
+  }, [results, showResults]);
+
+  if (!showResults || results.length === 0) {
+    return (
+      <Card className="bg-[#1A1A1A] border-white/[0.06]">
+        <CardContent className="py-12 text-center">
+          <BarChart3 className="w-8 h-8 text-white/10 mx-auto mb-3" />
+          <p className="text-[14px] text-white/50 mb-1">Analysis & Review</p>
+          <p className="text-[12px] text-white/25">Run a transformation first to see quality metrics and consistency analysis.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const avgScore = analysisResults.length > 0 ? Math.round(analysisResults.reduce((s, r) => s + r.metrics.qualityScore, 0) / analysisResults.length) : 0;
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-[#1A1A1A] border-white/[0.06]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px] font-normal text-[#4DB8C7] flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" /> Quality Metrics Overview
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+              <div className="text-2xl font-light text-[#4DB8C7]">{avgScore}%</div>
+              <div className="text-[10px] text-white/30 mt-0.5">Avg Quality</div>
+            </div>
+            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+              <div className="text-2xl font-light text-white/70">{analysisResults.length}</div>
+              <div className="text-[10px] text-white/30 mt-0.5">Outputs</div>
+            </div>
+            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+              <div className="text-2xl font-light text-white/70">{analysisResults.reduce((s, r) => s + r.metrics.wordCount, 0)}</div>
+              <div className="text-[10px] text-white/30 mt-0.5">Total Words</div>
+            </div>
+            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+              <div className="text-2xl font-light text-white/70">{analysisResults.reduce((s, r) => s + r.metrics.links, 0)}</div>
+              <div className="text-[10px] text-white/30 mt-0.5">Links</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-3">
+        {analysisResults.map((ar, i) => (
+          <Card key={i} className="bg-[#1A1A1A] border-white/[0.06]">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-medium text-white/80">{ar.title}</span>
+                  <Badge variant="outline" className="text-[9px] border-white/[0.1] text-white/40 capitalize">{ar.type?.replace("_", " ")}</Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-16 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${ar.metrics.qualityScore}%`, background: ar.metrics.qualityScore >= 70 ? "#8ED7A3" : ar.metrics.qualityScore >= 50 ? "#D4654A" : "#C8442C" }} />
+                  </div>
+                  <span className="text-[11px] text-white/40 w-8 text-right">{ar.metrics.qualityScore}%</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-6 gap-2">
+                {[{ label: "Words", val: ar.metrics.wordCount }, { label: "Sentences", val: ar.metrics.sentenceCount }, { label: "Paragraphs", val: ar.metrics.paragraphCount }, { label: "Bullets", val: ar.metrics.bulletPoints }, { label: "Read Time", val: ar.metrics.estimatedReadTime }, { label: "Emojis", val: ar.metrics.emojis }].map(m => (
+                  <div key={m.label} className="text-center p-2 rounded bg-white/[0.02]">
+                    <div className="text-[13px] font-medium text-white/60">{m.val}</div>
+                    <div className="text-[9px] text-white/25 mt-0.5">{m.label}</div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Compliance Checker ─────────── */
+const COMPLIANCE_RULES: { name: string; pattern: RegExp; regulation: string; severity: "PASS" | "WARN" | "FAIL"; description: string }[] = [
+  { name: "Personal Data Disclosure", pattern: /\b(personal data|personally identifiable|individual's data|citizen's data)\b/gi, regulation: "DPDP Act", severity: "WARN", description: "Content may expose personal data without explicit consent" },
+  { name: "Consent Not Mentioned", pattern: /\b(collect|store|process|share|transfer)\b.*\b(data|information|records)\b/gi, regulation: "DPDP Act", severity: "WARN", description: "Data processing mentioned without consent reference" },
+  { name: "Cross-Border Transfer", pattern: /\b(transfer|send|share|export)\b.*\b(overseas|foreign|international|abroad|outside India)\b/gi, regulation: "DPDP Act", severity: "FAIL", description: "Cross-border data transfer may violate DPDP Act restrictions" },
+  { name: "No Classification Marking", pattern: /^(?!.*\b(TOP SECRET|SECRET|CONFIDENTIAL|RESTRICTED|UNCLASSIFIED|PUBLIC)\b).*$/gm, regulation: "Organizational Policy", severity: "WARN", description: "Content lacks official classification marking" },
+  { name: "GDPR Right Reference", pattern: /\b(right to erasure|right to access|right to portability|data subject)\b/gi, regulation: "GDPR", severity: "PASS", description: "GDPR rights correctly referenced" },
+  { name: "Encryption Mention", pattern: /\b(encrypt|encryption|TLS|SSL|AES|cipher)\b/gi, regulation: "IT Act", severity: "PASS", description: "Security controls referenced" },
+  { name: "Third-Party Sharing", pattern: /\b(third party|3rd party|vendor|partner|subcontractor)\b.*\b(data|access|share|receive)\b/gi, regulation: "DPDP Act", severity: "WARN", description: "Third-party data sharing may require additional safeguards" },
+  { name: "Data Breach Notification", pattern: /\b(breach|incident|unauthorized access|data leak|compromise)\b/gi, regulation: "IT Act", severity: "PASS", description: "Incident handling appropriately referenced" },
+  { name: "Children's Data", pattern: /\b(child|children|minors|under 18|underage)\b.*\b(data|information|collected)\b/gi, regulation: "DPDP Act", severity: "FAIL", description: "Children's data requires verifiable parental consent" },
+  { name: "Data Retention Period", pattern: /\b(retain|retention|archive|storage period|keep for)\b/gi, regulation: "DPDP Act", severity: "PASS", description: "Data retention policy referenced" },
+];
+
+function checkCompliance(text: string) {
+  return COMPLIANCE_RULES.map(rule => {
+    const matches = text.match(rule.pattern);
+    return { ...rule, triggered: matches !== null, matchCount: matches?.length || 0 };
+  });
+}
+
+function ComplianceSection() {
+  const [complianceInput, setComplianceInput] = useState("");
+  const [complianceResults, setComplianceResults] = useState<ReturnType<typeof checkCompliance>>([]);
+  const [checked, setChecked] = useState(false);
+
+  const handleCheck = () => {
+    if (!complianceInput.trim()) return;
+    setComplianceResults(checkCompliance(complianceInput));
+    setChecked(true);
+  };
+
+  const passCount = complianceResults.filter(r => r.severity === "PASS" && r.triggered).length;
+  const warnCount = complianceResults.filter(r => r.severity === "WARN" && r.triggered).length;
+  const failCount = complianceResults.filter(r => r.severity === "FAIL" && r.triggered).length;
+  const triggeredCount = complianceResults.filter(r => r.triggered).length;
+  const score = complianceResults.length > 0 ? Math.round(((complianceResults.length - failCount * 2 - warnCount) / complianceResults.length) * 100) : 0;
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-[#1A1A1A] border-white/[0.06]">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-[15px] font-normal text-white flex items-center gap-2">
+            <Lock className="w-4 h-4 text-[#D4654A]" /> Compliance Check
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Textarea
+            value={complianceInput}
+            onChange={e => setComplianceInput(e.target.value)}
+            placeholder="Paste content to check against DPDP Act, GDPR, IT Act, and organizational policies..."
+            className="min-h-[140px] bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/25 font-light text-[13px] resize-y"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-white/30">{COMPLIANCE_RULES.length} compliance rules &middot; DPDP Act, GDPR, IT Act, Org Policy</span>
+            <Button onClick={handleCheck} disabled={!complianceInput.trim()} className="bg-[#D4654A] hover:bg-[#C45540] text-white text-[13px] font-medium">
+              <Lock className="w-4 h-4 mr-2" /> Run Check
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {checked && (
+        <Card className="bg-[#1A1A1A] border-white/[0.06]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[15px] font-normal flex items-center gap-2">
+              {failCount > 0 ? (
+                <><AlertTriangle className="w-4 h-4 text-[#C8442C]" /><span className="text-[#C8442C]">Compliance Issues Found</span></>
+              ) : warnCount > 0 ? (
+                <><AlertTriangle className="w-4 h-4 text-[#D4654A]" /><span className="text-[#D4654A]">Warnings Detected</span></>
+              ) : (
+                <><CheckCircle className="w-4 h-4 text-[#8ED7A3]" /><span className="text-[#8ED7A3]">All Checks Passed</span></>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-4 gap-3">
+              <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+                <div className="text-2xl font-light" style={{ color: score >= 70 ? "#8ED7A3" : score >= 40 ? "#D4654A" : "#C8442C" }}>{score}%</div>
+                <div className="text-[10px] text-white/30 mt-0.5">Score</div>
+              </div>
+              <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+                <div className="text-2xl font-light text-[#8ED7A3]">{passCount}</div>
+                <div className="text-[10px] text-white/30 mt-0.5">Passed</div>
+              </div>
+              <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+                <div className="text-2xl font-light text-[#D4654A]">{warnCount}</div>
+                <div className="text-[10px] text-white/30 mt-0.5">Warnings</div>
+              </div>
+              <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-center">
+                <div className="text-2xl font-light text-[#C8442C]">{failCount}</div>
+                <div className="text-[10px] text-white/30 mt-0.5">Failures</div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {complianceResults.filter(r => r.triggered).map((r, i) => (
+                <div key={i} className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-medium text-white/80">{r.name}</span>
+                      <Badge className={`text-[9px] border ${
+                        r.severity === "PASS" ? "border-[#8ED7A3]/30 text-[#8ED7A3] bg-[#8ED7A3]/10" :
+                        r.severity === "WARN" ? "border-[#D4654A]/30 text-[#D4654A] bg-[#D4654A]/10" :
+                        "border-[#C8442C]/30 text-[#C8442C] bg-[#C8442C]/10"
+                      }`}>{r.severity}</Badge>
+                    </div>
+                    <span className="text-[10px] text-white/25">{r.regulation}</span>
+                  </div>
+                  <p className="text-[11px] text-white/35 leading-relaxed">{r.description}</p>
+                </div>
+              ))}
+            </div>
+
+            {complianceResults.filter(r => !r.triggered).length > 0 && (
+              <div className="pt-3 border-t border-white/[0.04]">
+                <p className="text-[11px] text-white/25 mb-2">Not triggered ({complianceResults.filter(r => !r.triggered).length} rules)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {complianceResults.filter(r => !r.triggered).map((r, i) => (
+                    <span key={i} className="text-[10px] text-white/20 px-2 py-0.5 rounded bg-white/[0.02]">{r.name}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -716,17 +1107,14 @@ function DashboardInner() {
           )}
 
           {/* ══════ OTHER SECTIONS (Analysis, DLP, Compliance) ══════ */}
-          {(activeSection === "analysis" || activeSection === "dlp" || activeSection === "compliance") && (
-            <Card className="bg-[#1A1A1A] border-white/[0.06]">
-              <CardContent className="py-12 text-center">
-                <Eye className="w-8 h-8 text-white/10 mx-auto mb-3" />
-                <p className="text-[14px] text-white/50 mb-1">
-                  {activeSection === "analysis" ? "Analysis & Review" : activeSection === "dlp" ? "DLP Scanner" : "Compliance Check"}
-                </p>
-                <p className="text-[12px] text-white/25">This module is accessible at your clearance level. Run a transformation to see analysis results.</p>
-              </CardContent>
-            </Card>
-          )}
+          {/* ══════ DLP SCANNER ══════ */}
+          {activeSection === "dlp" && <DLPScannerSection />}
+
+          {/* ══════ ANALYSIS ══════ */}
+          {activeSection === "analysis" && <AnalysisSection results={results} showResults={showResults} />}
+
+          {/* ══════ COMPLIANCE ══════ */}
+          {activeSection === "compliance" && <ComplianceSection />}
         </div>
       </main>
     </div>

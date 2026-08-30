@@ -217,6 +217,180 @@ function GeneratedMedia({ results, userId }: { results: any[]; userId: string })
   );
 }
 
+/* ─────────── Auto DLP (runs after transform) ─────────── */
+function AutoDLPResults({ content }: { content: string }) {
+  const findings = scanContent(content);
+  const highCount = findings.filter(f => f.severity === "HIGH").length;
+  const medCount = findings.filter(f => f.severity === "MEDIUM").length;
+  const lowCount = findings.filter(f => f.severity === "LOW").length;
+  const severityColor: Record<string, string> = { HIGH: "text-[#C8442C] bg-[#C8442C]/10 border-[#C8442C]/20", MEDIUM: "text-[#D4654A] bg-[#D4654A]/10 border-[#D4654A]/20", LOW: "text-[#4DB8C7] bg-[#4DB8C7]/10 border-[#4DB8C7]/20" };
+
+  return (
+    <Card className="bg-[#1A1A1A] border-white/[0.06]">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-[14px] font-normal flex items-center gap-2">
+          <Shield className="w-4 h-4 text-[#8B6CC7]" />
+          <span className="text-white/70">DLP Scan</span>
+          {findings.length === 0 ? (
+            <Badge className="text-[9px] border border-[#8ED7A3]/30 text-[#8ED7A3] bg-[#8ED7A3]/10 ml-2">Clean</Badge>
+          ) : (
+            <Badge className="text-[9px] border border-[#D4654A]/30 text-[#D4654A] bg-[#D4654A]/10 ml-2">{findings.length} Finding{findings.length !== 1 ? "s" : ""}</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-2 mb-3">
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-[#C8442C]">{highCount}</div>
+            <div className="text-[9px] text-white/25">HIGH</div>
+          </div>
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-[#D4654A]">{medCount}</div>
+            <div className="text-[9px] text-white/25">MEDIUM</div>
+          </div>
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-[#4DB8C7]">{lowCount}</div>
+            <div className="text-[9px] text-white/25">LOW</div>
+          </div>
+        </div>
+        {findings.length > 0 && (
+          <div className="space-y-2">
+            {findings.map((f, i) => (
+              <div key={i} className="flex items-center justify-between py-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] text-white/60">{f.name}</span>
+                  <span className="text-[9px] text-white/20">{f.category}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-white/30 font-mono">{f.matches[0]?.length > 30 ? f.matches[0].substring(0, 30) + "..." : f.matches[0]}</span>
+                  <Badge className={`text-[9px] border ${severityColor[f.severity]}`}>{f.severity}</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─────────── Auto Analysis (runs after transform) ─────────── */
+function AutoAnalysisResults({ results }: { results: any[] }) {
+  const analyzed = results.map((r: any) => {
+    const content = typeof r.content === "string" ? r.content : JSON.stringify(r.content || "");
+    const wordCount = content.split(/\s+/).filter(Boolean).length;
+    const sentenceCount = content.split(/[.!?]+/).filter(Boolean).length;
+    let qualityScore = 50;
+    if (wordCount > 50) qualityScore += 10;
+    if (wordCount > 200) qualityScore += 10;
+    if (sentenceCount > 3) qualityScore += 5;
+    if (r.type === "linkedin" && wordCount > 100) qualityScore += 10;
+    if (r.type === "twitter" && content.match(/#/g)) qualityScore += 5;
+    qualityScore = Math.min(qualityScore, 100);
+    return { type: r.type, title: r.title || r.type, wordCount, sentenceCount, qualityScore };
+  });
+  const avgScore = Math.round(analyzed.reduce((s, r) => s + r.qualityScore, 0) / analyzed.length);
+  const totalWords = analyzed.reduce((s, r) => s + r.wordCount, 0);
+
+  return (
+    <Card className="bg-[#1A1A1A] border-white/[0.06]">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-[14px] font-normal flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-[#4DB8C7]" />
+          <span className="text-white/70">Analysis</span>
+          <Badge className="text-[9px] border border-[#4DB8C7]/30 text-[#4DB8C7] bg-[#4DB8C7]/10 ml-2">{avgScore}% quality</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-2 mb-3">
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-[#4DB8C7]">{avgScore}%</div>
+            <div className="text-[9px] text-white/25">Quality</div>
+          </div>
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-white/60">{totalWords}</div>
+            <div className="text-[9px] text-white/25">Words</div>
+          </div>
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-white/60">{analyzed.length}</div>
+            <div className="text-[9px] text-white/25">Outputs</div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          {analyzed.map((ar, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <span className="text-[11px] text-white/50 w-28 truncate capitalize">{ar.type?.replace("_", " ")}</span>
+              <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${ar.qualityScore}%`, background: ar.qualityScore >= 70 ? "#8ED7A3" : ar.qualityScore >= 50 ? "#D4654A" : "#C8442C" }} />
+              </div>
+              <span className="text-[10px] text-white/30 w-8 text-right">{ar.qualityScore}%</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─────────── Auto Compliance (runs after transform) ─────────── */
+function AutoComplianceResults({ content }: { content: string }) {
+  const results = checkCompliance(content);
+  const triggered = results.filter(r => r.triggered);
+  const passCount = triggered.filter(r => r.severity === "PASS").length;
+  const warnCount = triggered.filter(r => r.severity === "WARN").length;
+  const failCount = triggered.filter(r => r.severity === "FAIL").length;
+  const score = results.length > 0 ? Math.round(((results.length - failCount * 2 - warnCount) / results.length) * 100) : 100;
+
+  return (
+    <Card className="bg-[#1A1A1A] border-white/[0.06]">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-[14px] font-normal flex items-center gap-2">
+          <Lock className="w-4 h-4 text-[#D4654A]" />
+          <span className="text-white/70">Compliance</span>
+          <Badge className={`text-[9px] border ml-2 ${failCount > 0 ? "border-[#C8442C]/30 text-[#C8442C] bg-[#C8442C]/10" : warnCount > 0 ? "border-[#D4654A]/30 text-[#D4654A] bg-[#D4654A]/10" : "border-[#8ED7A3]/30 text-[#8ED7A3] bg-[#8ED7A3]/10"}`}>{score}%</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-2 mb-3">
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light" style={{ color: score >= 70 ? "#8ED7A3" : score >= 40 ? "#D4654A" : "#C8442C" }}>{score}%</div>
+            <div className="text-[9px] text-white/25">Score</div>
+          </div>
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-[#8ED7A3]">{passCount}</div>
+            <div className="text-[9px] text-white/25">Pass</div>
+          </div>
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-[#D4654A]">{warnCount}</div>
+            <div className="text-[9px] text-white/25">Warn</div>
+          </div>
+          <div className="px-3 py-1.5 rounded bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-lg font-light text-[#C8442C]">{failCount}</div>
+            <div className="text-[9px] text-white/25">Fail</div>
+          </div>
+        </div>
+        {triggered.length > 0 && (
+          <div className="space-y-1.5">
+            {triggered.map((r, i) => (
+              <div key={i} className="flex items-center justify-between py-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-white/50">{r.name}</span>
+                  <span className="text-[9px] text-white/20">{r.regulation}</span>
+                </div>
+                <Badge className={`text-[9px] border ${
+                  r.severity === "PASS" ? "border-[#8ED7A3]/30 text-[#8ED7A3] bg-[#8ED7A3]/10" :
+                  r.severity === "WARN" ? "border-[#D4654A]/30 text-[#D4654A] bg-[#D4654A]/10" :
+                  "border-[#C8442C]/30 text-[#C8442C] bg-[#C8442C]/10"
+                }`}>{r.severity}</Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ─────────── DLP Scanner ─────────── */
 const DLP_PATTERNS: { name: string; pattern: RegExp; severity: "HIGH" | "MEDIUM" | "LOW"; category: string }[] = [
   { name: "Email Address", pattern: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, severity: "MEDIUM", category: "PII" },
@@ -685,9 +859,12 @@ function DashboardInner() {
   const levelInfo = user ? LEVEL_LABELS[user.roleLevel] : null;
 
   /* ── Transform ── */
+  // Transform media state
+  const [transformMedia, setTransformMedia] = useState<any>(null);
+
   const handleTransform = async () => {
     if (!sourceContent.trim()) { addNotification("Enter source content", "error"); return; }
-    setProcessing(true); setPipelineStep(0); setShowResults(false);
+    setProcessing(true); setPipelineStep(0); setShowResults(false); setTransformMedia(null);
     const stepTimer = setInterval(() => setPipelineStep(prev => Math.min(prev + 1, 6)), 900);
     try {
       const res = await fetch("/api/transform", {
@@ -696,10 +873,29 @@ function DashboardInner() {
         body: JSON.stringify({ action: "transform", sourceContent, outputTypes: selectedOutputs, config, userId: user?.userId }),
       });
       const data = await res.json();
-      if (data.success) { setResults(data.results || []); setShowResults(true); addNotification("Transformation complete!", "success"); }
-      else addNotification(data.error || "Transformation failed", "error");
+      if (data.success) {
+        setResults(data.results || []);
+        setTransformMedia(data.media || null);
+        setShowResults(true);
+        addNotification("Transformation complete! DLP, Analysis & Compliance auto-checked.", "success");
+      } else addNotification(data.error || "Transformation failed", "error");
     } catch { addNotification("Connection error", "error"); }
     clearInterval(stepTimer); setProcessing(false);
+  };
+
+  const handleDownloadPptx = () => {
+    if (!transformMedia?.presentation?.base64) return;
+    const byteChars = atob(transformMedia.presentation.base64);
+    const byteArray = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = transformMedia.presentation.fileName || "presentation.pptx";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    addNotification("Presentation downloaded!", "success");
   };
 
   /* ── Approval ── */
@@ -929,13 +1125,20 @@ function DashboardInner() {
               {showResults && results.length > 0 && (
                 <Card className="bg-[#1A1A1A] border-white/[0.06]">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-[15px] font-normal text-[#8ED7A3] flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" /> {results.length} Outputs Generated
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-[15px] font-normal text-[#8ED7A3] flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" /> {results.length} Outputs Generated
+                      </CardTitle>
+                      {transformMedia?.presentation?.base64 && (
+                        <Button size="sm" onClick={handleDownloadPptx} className="bg-[#8ED7A3]/20 hover:bg-[#8ED7A3]/30 text-[#8ED7A3] border border-[#8ED7A3]/20 text-[12px] h-8">
+                          <FileDown className="w-3.5 h-3.5 mr-1.5" /> Download .pptx
+                        </Button>
+                      )}
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {results.map((r: any, i: number) => (
-                      <details key={i} className="group">
+                      <details key={i} className="group" open={r.type === "presentation"}>
                         <summary className="flex items-center justify-between cursor-pointer px-4 py-3 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] transition-all list-none">
                           <div className="flex items-center gap-3">
                             <ChevronRight className="w-3.5 h-3.5 text-white/30 transition-transform group-open:rotate-90 shrink-0" />
@@ -946,7 +1149,6 @@ function DashboardInner() {
                           </div>
                         </summary>
                         <div className="mt-2 p-4 rounded-lg bg-black/20 border border-white/[0.04]">
-                          {/* Presentation — slide viewer */}
                           {r.type === "presentation" ? (
                             <PresentationViewer content={r.content} />
                           ) : r.type === "video" ? (
@@ -968,6 +1170,39 @@ function DashboardInner() {
                     ))}
                   </CardContent>
                 </Card>
+              )}
+
+              {/* PPTX Download Banner */}
+              {showResults && transformMedia?.presentation?.base64 && (
+                <Card className="bg-[#1A1A1A] border-[#8ED7A3]/20">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileDown className="w-5 h-5 text-[#8ED7A3]" />
+                      <div>
+                        <div className="text-[13px] font-medium text-white/80">{transformMedia.presentation.fileName || "presentation.pptx"}</div>
+                        <div className="text-[11px] text-white/30">{transformMedia.presentation.slideCount || "?"} slides &middot; PowerPoint (PPTX)</div>
+                      </div>
+                    </div>
+                    <Button size="sm" onClick={handleDownloadPptx} className="bg-[#8ED7A3] hover:bg-[#7BC08A] text-[#121212] text-[12px] font-medium h-8">
+                      <FileDown className="w-3.5 h-3.5 mr-1.5" /> Download
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Auto-generated DLP Scan Results */}
+              {showResults && sourceContent.trim() && (
+                <AutoDLPResults content={sourceContent} />
+              )}
+
+              {/* Auto-generated Analysis */}
+              {showResults && results.length > 0 && (
+                <AutoAnalysisResults results={results} />
+              )}
+
+              {/* Auto-generated Compliance Check */}
+              {showResults && sourceContent.trim() && (
+                <AutoComplianceResults content={sourceContent} />
               )}
 
               {/* Generated Media */}

@@ -58,6 +58,167 @@ const LEVEL_LABELS: Record<string, { label: string; color: string; tier: string 
 
 const OUTPUT_TYPES = ["linkedin", "twitter", "advisory", "executive_summary", "presentation", "infographic", "video", "crisis_response"];
 
+/* ─────────── Presentation Viewer ─────────── */
+function PresentationViewer({ content }: { content: any }) {
+  let parsed: any;
+  try {
+    parsed = typeof content === "string" ? JSON.parse(content) : content;
+  } catch {
+    return <pre className="text-[12px] text-white/50 whitespace-pre-wrap max-h-80 overflow-auto font-light">{typeof content === "string" ? content : JSON.stringify(content, null, 2)}</pre>;
+  }
+  const deck = parsed.slideDeck || parsed;
+  const slides = deck.slides || [];
+  if (slides.length === 0) {
+    return <pre className="text-[12px] text-white/50 whitespace-pre-wrap max-h-80 overflow-auto font-light">{JSON.stringify(parsed, null, 2)}</pre>;
+  }
+
+  const handleDownloadPptx = async () => {
+    try {
+      const res = await fetch("/api/generate/presentation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: JSON.stringify(parsed), title: deck.title || "Presentation", style: "corporate" }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = res.headers.get("Content-Disposition")?.match(/filename="(.+?)"/)?.[1] || "presentation.pptx";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch {}
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-[14px] font-medium text-white/80">{deck.title || "Presentation"}</div>
+          <div className="text-[11px] text-white/30 mt-0.5">{slides.length} slides &middot; {deck.estimatedDuration || ""} &middot; {deck.theme || ""}</div>
+        </div>
+        <Button size="sm" variant="outline" className="border-white/[0.1] text-white/60 text-[11px] h-7" onClick={handleDownloadPptx}>
+          <FileDown className="w-3 h-3 mr-1" /> Download .pptx
+        </Button>
+      </div>
+      <div className="space-y-2 max-h-80 overflow-auto pr-1">
+        {slides.map((slide: any, si: number) => {
+          const accent = slide.accentColor || "C8442C";
+          const isTitle = slide.layout === "title";
+          return (
+            <div key={si} className={`rounded-lg border border-white/[0.06] overflow-hidden ${isTitle ? "" : "bg-white/[0.03]"}`}
+              style={isTitle ? { background: `linear-gradient(135deg, #${accent}, #${accent}cc)` } : {}}>
+              <div className="px-3 py-1.5 text-[9px] font-semibold tracking-wider uppercase" style={{ background: `#${accent}`, color: "rgba(255,255,255,0.8)" }}>
+                Slide {slide.slideNumber}
+              </div>
+              <div className="px-4 py-3">
+                <div className={`text-[13px] font-semibold mb-1.5 ${isTitle ? "text-white" : "text-white/80"}`}>{slide.title}</div>
+                {Array.isArray(slide.content) && slide.content.length > 0 && (
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {slide.content.filter((c: string) => c).map((line: string, li: number) => (
+                      <li key={li} className="text-[11px] text-white/45 font-light leading-relaxed">{line}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {slide.notes && (
+                <div className="px-4 py-2 bg-white/[0.02] border-t border-white/[0.04]">
+                  <span className="text-[10px] text-white/25 italic">📝 {slide.notes}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Video Viewer ─────────── */
+function VideoViewer({ content }: { content: any }) {
+  const [currentScene, setCurrentScene] = useState(0);
+  let parsed: any;
+  try {
+    parsed = typeof content === "string" ? JSON.parse(content) : content;
+  } catch {
+    return <pre className="text-[12px] text-white/50 whitespace-pre-wrap max-h-80 overflow-auto font-light">{String(content)}</pre>;
+  }
+  const scenes = parsed?.scenes || parsed?.storyboard?.scenes || [];
+  if (scenes.length === 0) {
+    return <pre className="text-[12px] text-white/50 whitespace-pre-wrap max-h-80 overflow-auto font-light">{JSON.stringify(parsed, null, 2)}</pre>;
+  }
+  const scene = scenes[currentScene];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[14px] font-medium text-white/80">🎬 Video Storyboard — {scenes.length} scenes</div>
+        <span className="text-[11px] text-white/30">Scene {currentScene + 1} / {scenes.length}</span>
+      </div>
+      {/* Scene viewer */}
+      <div className="relative rounded-lg overflow-hidden bg-black/40 aspect-video mb-3">
+        {scene.imageUrl && (
+          <img src={scene.imageUrl} alt={`Scene ${scene.sceneNumber}`} className="w-full h-full object-cover opacity-90" />
+        )}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+          <div className="text-[13px] text-white/80 leading-relaxed">{scene.narration || scene.description || ""}</div>
+        </div>
+        <div className="absolute top-3 left-3 px-2 py-0.5 rounded bg-black/60 text-[10px] text-white/60 font-medium">
+          Scene {scene.sceneNumber || currentScene + 1}
+        </div>
+      </div>
+      {/* Scene dots */}
+      <div className="flex items-center justify-center gap-1.5">
+        {scenes.map((_: any, si: number) => (
+          <button key={si} onClick={() => setCurrentScene(si)}
+            className={`w-2 h-2 rounded-full transition-all ${si === currentScene ? "bg-[#C8442C] scale-125" : "bg-white/20 hover:bg-white/30"}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Generated Media ─────────── */
+function GeneratedMedia({ results, userId }: { results: any[]; userId: string }) {
+  const [mediaData, setMediaData] = useState<any>(null);
+  useEffect(() => {
+    const hasMedia = results.some(r => r.type === "video" || r.type === "infographic");
+    if (hasMedia) {
+      fetch("/api/transform", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get_last_media", userId }),
+      }).then(r => r.json()).then(d => { if (d.success && d.media) setMediaData(d.media); }).catch(() => {});
+    }
+  }, [results, userId]);
+
+  if (!mediaData) return null;
+
+  return (
+    <div className="space-y-4">
+      {mediaData.image?.url && (
+        <Card className="bg-[#1A1A1A] border-white/[0.06]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px] font-normal text-white flex items-center gap-2">
+              <Image className="w-4 h-4 text-[#8B6CC7]" /> AI Generated Image
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <img src={mediaData.image.url} alt="AI generated" className="w-full max-w-lg rounded-lg border border-white/[0.08]" />
+            <div className="mt-3 flex gap-2">
+              <a href={mediaData.image.url} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium bg-white/[0.04] border border-white/[0.08] text-white/50 hover:text-white/70 transition-all">
+                Open Full Size ↗
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 /* ─────────── Dashboard ─────────── */
 function DashboardInner() {
   const router = useRouter();
@@ -332,7 +493,6 @@ function DashboardInner() {
                     className="min-h-[140px] bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/25 font-light text-[13px] resize-y focus-visible:ring-[#C8442C]/30 focus-visible:border-[#C8442C]/30"
                   />
 
-                  {/* Output formats */}
                   <div>
                     <label className="text-[11px] font-semibold text-white/40 tracking-widest uppercase mb-2 block">Output Formats</label>
                     <div className="flex flex-wrap gap-2">
@@ -352,7 +512,6 @@ function DashboardInner() {
                     </div>
                   </div>
 
-                  {/* Config */}
                   <div className="grid grid-cols-3 gap-3">
                     {Object.entries({ audience: ["general", "technical", "executive"], tone: ["formal", "casual", "technical"], language: ["en", "hi"] }).map(([key, opts]) => (
                       <div key={key}>
@@ -386,22 +545,43 @@ function DashboardInner() {
                   <CardContent className="space-y-3">
                     {results.map((r: any, i: number) => (
                       <details key={i} className="group">
-                        <summary className="flex items-center justify-between cursor-pointer p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] transition-all list-none">
-                          <div className="flex items-center gap-2">
-                            <ChevronRight className="w-3.5 h-3.5 text-white/30 transition-transform group-open:rotate-90" />
-                            <span className="text-[13px] font-medium text-white/80">{r.title || r.type}</span>
+                        <summary className="flex items-center justify-between cursor-pointer px-4 py-3 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] transition-all list-none">
+                          <div className="flex items-center gap-3">
+                            <ChevronRight className="w-3.5 h-3.5 text-white/30 transition-transform group-open:rotate-90 shrink-0" />
+                            <span className="text-[13px] font-medium text-white/80 truncate">{r.title || r.type}</span>
                           </div>
-                          <Badge variant="outline" className="text-[10px] border-white/[0.1] text-white/40">{r.type}</Badge>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge variant="outline" className="text-[10px] border-white/[0.1] text-white/40 capitalize">{r.type?.replace("_", " ")}</Badge>
+                          </div>
                         </summary>
                         <div className="mt-2 p-4 rounded-lg bg-black/20 border border-white/[0.04]">
-                          <pre className="text-[12px] text-white/50 font-light whitespace-pre-wrap max-h-60 overflow-auto">
-                            {typeof r.content === "string" ? (() => { try { return JSON.stringify(JSON.parse(r.content), null, 2); } catch { return r.content; } })() : JSON.stringify(r.content, null, 2)}
-                          </pre>
+                          {/* Presentation — slide viewer */}
+                          {r.type === "presentation" ? (
+                            <PresentationViewer content={r.content} />
+                          ) : r.type === "video" ? (
+                            <VideoViewer content={r.content} />
+                          ) : (
+                            <div className="text-[13px] text-white/60 leading-relaxed whitespace-pre-wrap max-h-80 overflow-auto font-light">
+                              {typeof r.content === "string" ? (() => { try { return JSON.stringify(JSON.parse(r.content), null, 2); } catch { return r.content; } })() : typeof r.content === "object" ? JSON.stringify(r.content, null, 2) : String(r.content)}
+                            </div>
+                          )}
+                          {r.metadata && (
+                            <div className="mt-3 pt-3 border-t border-white/[0.06] flex flex-wrap gap-2">
+                              {Object.entries(r.metadata).map(([k, v]) => (
+                                <span key={k} className="text-[10px] px-2 py-0.5 rounded bg-white/[0.04] text-white/30">{k}: {String(v)}</span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </details>
                     ))}
                   </CardContent>
                 </Card>
+              )}
+
+              {/* Generated Media */}
+              {showResults && results.length > 0 && (
+                <GeneratedMedia results={results} userId={user.userId} />
               )}
             </div>
           )}

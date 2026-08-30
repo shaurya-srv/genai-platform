@@ -303,10 +303,10 @@ function DashboardInner() {
                           <span style={{ fontSize: "0.65rem", padding: "0.15rem 0.5rem", borderRadius: 4, background: "rgba(59,130,246,0.15)", color: "#3b82f6", fontWeight: 600 }}>{r.type}</span>
                         </summary>
                         <div style={{ marginTop: "0.75rem", borderRadius: 8, background: "rgba(0,0,0,0.2)", overflow: "auto" }}>
-                          {r.type === 'presentation' && typeof r.content === 'string' ? (() => {
+                          {r.type === 'presentation' ? (() => {
                             try {
-                              const parsed = JSON.parse(r.content);
-                              const deck = parsed.slideDeck || parsed;
+                              const contentObj = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+                              const deck = contentObj.slideDeck || contentObj;
                               const slides = deck.slides || [];
                               return (
                                 <div>
@@ -359,11 +359,11 @@ function DashboardInner() {
                                     })}
                                   </div>
                                   {/* Design guide */}
-                                  {parsed.designGuide && (
+                                  {contentObj.designGuide && (
                                     <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                                       <div style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 600, marginBottom: '0.25rem' }}>🎨 Design Guide</div>
                                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                                        {parsed.designGuide.recommendations?.map((rec: string, ri: number) => (
+                                        {contentObj.designGuide.recommendations?.map((rec: string, ri: number) => (
                                           <span key={ri} style={{ fontSize: '0.55rem', padding: '0.15rem 0.4rem', borderRadius: 3, background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>{rec}</span>
                                         ))}
                                       </div>
@@ -371,10 +371,12 @@ function DashboardInner() {
                                   )}
                                 </div>
                               );
-                            } catch {
-                              return <pre style={{ margin: 0, padding: '1rem', fontFamily: 'inherit', fontSize: '0.75rem', color: '#94a3b8' }}>{r.content}</pre>;
+                            } catch (e) {
+                              console.error('Presentation render error:', e);
+                              const fallback = typeof r.content === 'string' ? r.content : JSON.stringify(r.content, null, 2);
+                              return <pre style={{ margin: 0, padding: '1rem', fontFamily: 'inherit', fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'pre-wrap' }}>{fallback}</pre>;
                             }
-                          })() : (
+                          })(                          ) : (
                             <div style={{ padding: '1rem', fontSize: '0.8rem', color: '#cbd5e1', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxHeight: 400 }}>
                               {typeof r.content === 'string' ? (() => {
                                 try {
@@ -383,15 +385,18 @@ function DashboardInner() {
                                 } catch {
                                   return r.content;
                                 }
-                              })() : <span>No content</span>}
+                              })() : typeof r.content === 'object' && r.content !== null ? (
+                                <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: '0.75rem', color: '#94a3b8' }}>{JSON.stringify(r.content, null, 2)}</pre>
+                              ) : <span>No content</span>}
                             </div>
                           )}
                         </div>
                         {r.metadata && (
                           <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                            {Object.entries(r.metadata).map(([k, v]) => (
-                              <span key={k} style={{ fontSize: "0.6rem", padding: "0.15rem 0.4rem", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "#64748b" }}>{k}: {Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
-                            ))}
+                            {Object.entries(r.metadata).map(([k, v]) => {
+                              if (k === 'slides') return <span key={k} style={{ fontSize: "0.6rem", padding: "0.15rem 0.4rem", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "#64748b" }}>{k}: {Array.isArray(v) ? `${v.length} slides` : String(v)}</span>;
+                              return <span key={k} style={{ fontSize: "0.6rem", padding: "0.15rem 0.4rem", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "#64748b" }}>{k}: {Array.isArray(v) ? v.join(', ') : typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}</span>;
+                            })}
                           </div>
                         )}
                       </details>

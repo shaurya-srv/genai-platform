@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [googleVerified, setGoogleVerified] = useState(false);
   const [googleEmail, setGoogleEmail] = useState("");
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -16,6 +17,39 @@ function LoginPageInner() {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaRequired, setMfaRequired] = useState(false);
   const [challengeId, setChallengeId] = useState("");
+
+  // Handle Google OAuth callback redirect
+  useEffect(() => {
+    const googleSuccess = searchParams.get("google_success");
+    const googleError = searchParams.get("google_error");
+    const sessionToken = searchParams.get("session_token");
+    const userId = searchParams.get("user_id");
+    const userName = searchParams.get("user_name");
+    const userRole = searchParams.get("user_role");
+    const userLevel = searchParams.get("user_level");
+    const googleEmailParam = searchParams.get("google_email");
+
+    if (googleError) {
+      setError(`Google auth failed: ${decodeURIComponent(googleError)}`);
+      return;
+    }
+
+    if (googleSuccess && sessionToken && userId) {
+      // Store session and redirect to dashboard
+      const user = {
+        userId,
+        username: userId,
+        displayName: userName || "Google User",
+        role: userRole || "OPERATOR",
+        roleLevel: userLevel || "general_scientist",
+        email: googleEmailParam || "",
+      };
+      localStorage.setItem("auth_session", JSON.stringify({ token: sessionToken, userId, role: userRole }));
+      localStorage.setItem("auth_user", JSON.stringify(user));
+      router.push(`/dashboard?portal=${userRole}&userId=${userId}`);
+      return;
+    }
+  }, [searchParams, router]);
 
   // Step 1: Google sign-in — redirect to Google OAuth or use demo mode
   const handleGoogleSignIn = async () => {

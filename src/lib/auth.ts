@@ -706,7 +706,7 @@ export class AuthService {
   /**
    * Handle Google OAuth callback — exchange code for tokens and get user info
    */
-  static async handleGoogleCallback(code: string): Promise<{
+  static async handleGoogleCallback(code: string, redirectUri?: string): Promise<{
     success: boolean;
     user?: AuthUser;
     session?: AuthSession;
@@ -716,7 +716,7 @@ export class AuthService {
     try {
       // In production: exchange code for tokens, fetch Google user info
       // For demo: simulate Google auth response
-      const googleUser = await AuthService.exchangeGoogleCode(code);
+      const googleUser = await AuthService.exchangeGoogleCode(code, redirectUri);
       if (!googleUser) {
         return { success: false, error: 'Failed to authenticate with Google' };
       }
@@ -789,7 +789,7 @@ export class AuthService {
    * Exchange Google authorization code for user info
    * In production, this calls Google's token endpoint
    */
-  private static async exchangeGoogleCode(code: string): Promise<{
+  private static async exchangeGoogleCode(code: string, redirectUri?: string): Promise<{
     googleId: string;
     email: string;
     name: string;
@@ -804,6 +804,9 @@ export class AuthService {
       return AuthService.mockGoogleAuth();
     }
 
+    // Use provided redirect URI or fall back to configured one
+    const effectiveRedirectUri = redirectUri || AuthService.googleRedirectUri;
+
     // Production flow: exchange code for tokens
     try {
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -813,7 +816,7 @@ export class AuthService {
           code,
           client_id: AuthService.googleClientId,
           client_secret: AuthService.googleClientSecret,
-          redirect_uri: AuthService.googleRedirectUri,
+          redirect_uri: effectiveRedirectUri,
           grant_type: 'authorization_code',
         }),
       });

@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   }
 
   const origin = new URL(request.url).origin;
-  const redirectTo = `${origin}/api/auth/google/callback`;
+  const redirectTo = `${origin}/login`;
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",

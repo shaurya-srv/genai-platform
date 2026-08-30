@@ -50,23 +50,40 @@ function LoginPageInner() {
       return;
     }
 
-    // Handle Supabase code exchange (when Supabase sends code instead of tokens)
-    const supabaseCode = searchParams.get("supabase_code");
-    if (supabaseCode) {
-      // Exchange code for session via our API
-      fetch("/api/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "exchange", code: supabaseCode }),
-      }).then(r => r.json()).then(data => {
-        if (data.success && data.session && data.user) {
-          localStorage.setItem("auth_session", JSON.stringify(data.session));
-          localStorage.setItem("auth_user", JSON.stringify(data.user));
-          router.push(`/dashboard?portal=${data.user.role}&userId=${data.user.userId}`);
-        } else {
-          setError(data.error || "Failed to complete Google auth");
+    // Handle Supabase hash fragment tokens (from OAuth redirect)
+    // Supabase sends tokens as #access_token=... in the URL
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash && hash.includes('access_token=')) {
+        const params = new URLSearchParams(hash.substring(1));
+        const accessToken = params.get('access_token');
+        if (accessToken) {
+          setGoogleLoading(true);
+          // Exchange Supabase token for platform session
+          fetch('/api/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'exchange', access_token: accessToken }),
+          })
+            .then(r => r.json())
+            .then(data => {
+              if (data.success && data.session && data.user) {
+                localStorage.setItem('auth_session', JSON.stringify(data.session));
+                localStorage.setItem('auth_user', JSON.stringify(data.user));
+                // Clear hash from URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                router.push(`/dashboard?portal=${data.user.role}&userId=${data.user.userId}`);
+              } else {
+                setError(data.error || 'Failed to complete Google auth');
+                setGoogleLoading(false);
+              }
+            })
+            .catch(() => {
+              setError('Connection error during auth exchange');
+              setGoogleLoading(false);
+            });
         }
-      }).catch(() => setError("Connection error during auth exchange"));
+      }
     }
   }, [searchParams, router]);
 

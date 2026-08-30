@@ -3,6 +3,7 @@ import { ApprovalChainService } from "@/lib/approval-chain";
 import { AuthService, ROLE_LEVEL_HIERARCHY } from "@/lib/auth";
 import { HashChain } from "@/lib/hashchain";
 import { ApprovalChainDB } from "@/lib/db-adapter";
+import { NotificationService } from "@/lib/notifications";
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,6 +78,34 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        // Notify the first approver in the chain
+        try {
+          const firstStep = request_.chain[0];
+          if (firstStep) {
+            // Find users at or above the required level
+            const allUsers = AuthService.getAllUsers();
+            const requiredNum = ROLE_LEVEL_HIERARCHY[firstStep.requiredLevel] || 0;
+            const eligibleApprovers = allUsers.filter(u =>
+              u.active && u.userId !== user.userId &&
+              (ROLE_LEVEL_HIERARCHY[u.roleLevel] || 0) >= requiredNum
+            );
+            // Notify the first eligible approver
+            const approver = eligibleApprovers[0];
+            if (approver) {
+              await NotificationService.notifyApprovalRequest({
+                requestId: request_.id,
+                approverId: approver.userId,
+                submitterName: user.displayName,
+                contentTitle: request_.title,
+                riskLevel: request_.riskLevel,
+                chainStep: 1,
+                totalSteps: request_.chain.length,
+                deadline: request_.deadline,
+              });
+            }
+          }
+        } catch (e) { console.error('[Notification] Failed to notify approver:', e); }
+
         return NextResponse.json({ success: true, request: request_ });
       }
 
@@ -146,11 +175,44 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // If fully approved, trigger auto-publish
-        if (result.fullyApproved) {
-          // Auto-publish will be handled by the frontend
-          // calling the linkage service after receiving this response
-        }
+        // Send notifications
+        try {
+          const req = result.request;
+          // Notify submitter of decision
+          await NotificationService.notifyDecision({
+            requestId,
+            submitterId: req.submittedBy,
+            contentTitle: req.title,
+            decision: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+            approverName: user.displayName,
+            comments,
+          });
+          // If chain advanced, notify submitter of progress
+          if (result.shouldAdvance && !result.fullyApproved) {
+            const nextStep = req.chain.find((s: any) => s.status === 'ACTIVE');
+            if (nextStep) {
+              await NotificationService.notifyChainAdvanced({
+                requestId,
+                submitterId: req.submittedBy,
+                contentTitle: req.title,
+                completedBy: user.displayName,
+                nextApproverName: nextStep.requiredRoleName,
+                nextStep: nextStep.stepNumber,
+                totalSteps: req.chain.length,
+              });
+            }
+          }
+          // If fully approved, notify completion
+          if (result.fullyApproved) {
+            await NotificationService.notifyChainCompleted({
+              requestId,
+              submitterId: req.submittedBy,
+              contentTitle: req.title,
+              approvedBy: user.displayName,
+              publishResults: [],
+            });
+          }
+        } catch (e) { console.error('[Notification] Failed:', e); }
 
         return NextResponse.json({
           success: true,

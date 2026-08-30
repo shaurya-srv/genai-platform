@@ -65,6 +65,11 @@ function DashboardInner() {
   // Linkage state
   const [linkageStatus, setLinkageStatus] = useState<Record<string, any>>({});
   const [linkageLoading, setLinkageLoading] = useState("");
+  
+  // Audit state
+  const [auditTimeline, setAuditTimeline] = useState<any[]>([]);
+  const [auditChainHistory, setAuditChainHistory] = useState<any[]>([]);
+  const [auditTab, setAuditTab] = useState<'pending' | 'timeline' | 'chain'>('pending');
 
   const markImageLoaded = (url: string) => setImageLoadStates(prev => ({ ...prev, [url]: true }));
   const markImageError = (url: string) => setImageLoadStates(prev => ({ ...prev, [url]: 'error' }));
@@ -103,11 +108,19 @@ function DashboardInner() {
     return () => window.removeEventListener('keydown', handler);
   }, [transformMedia]);
 
-  // Load approval chain requests and linkage status
+  // Load approval chain requests, linkage status, and audit data
   useEffect(() => {
     if (activeSection === 'approval' && user) {
       fetch(`/api/approval-chain?action=pending&userId=${user.userId}&userLevel=${user.roleLevel}`).then(r => r.json()).then(data => {
         if (Array.isArray(data)) setChainRequests(data);
+      }).catch(() => {});
+      // Load audit timeline
+      fetch('/api/audit?action=timeline').then(r => r.json()).then(data => {
+        if (Array.isArray(data)) setAuditTimeline(data);
+      }).catch(() => {});
+      // Load chain history
+      fetch('/api/audit?action=chain_history').then(r => r.json()).then(data => {
+        if (Array.isArray(data)) setAuditChainHistory(data);
       }).catch(() => {});
     }
   }, [activeSection, user]);
@@ -821,8 +834,15 @@ function DashboardInner() {
           {activeSection === "approval" && (
             <div>
               <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#10b981", marginBottom: "0.5rem" }}>✍️ Command Chain Approval</h2>
-              <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "1rem" }}>Content goes through role-based approval chain. Higher risk = more approvals needed.</p>
-              {chainRequests.length > 0 ? (
+              <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "0.75rem" }}>Content goes through role-based approval chain. Higher risk = more approvals needed.</p>
+              {/* Sub-tabs */}
+              <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1rem' }}>
+                {[{ id: 'pending' as const, label: '⏳ Pending', count: chainRequests.length }, { id: 'timeline' as const, label: '📋 Audit Timeline', count: auditTimeline.length }, { id: 'chain' as const, label: '🔗 Hash Chain', count: auditChainHistory.length }].map(tab => (
+                  <button key={tab.id} onClick={() => setAuditTab(tab.id)} style={{ padding: '0.4rem 0.8rem', borderRadius: 6, border: `1px solid ${auditTab === tab.id ? '#10b981' : 'rgba(255,255,255,0.08)'}`, background: auditTab === tab.id ? 'rgba(16,185,129,0.12)' : 'transparent', color: auditTab === tab.id ? '#10b981' : '#94a3b8', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>{tab.label} ({tab.count})</button>
+                ))}
+              </div>
+              {/* Pending Tab */}
+              {auditTab === 'pending' && (chainRequests.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                   {chainRequests.map((cr: any, i: number) => (
                     <div key={i} style={{ padding: "1rem", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -860,6 +880,61 @@ function DashboardInner() {
                   <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✍️</div>
                   <p style={{ fontSize: '0.9rem' }}>No approval requests yet</p>
                   <p style={{ fontSize: '0.75rem' }}>Transform content, then click Finalise to start the approval chain</p>
+                </div>
+              ))}
+              {/* Audit Timeline Tab */}
+              {auditTab === 'timeline' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {auditTimeline.length > 0 ? auditTimeline.map((item: any, i: number) => (
+                    <div key={i} style={{ padding: '0.75rem 1rem', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f1f5f9' }}>{item.title}</span>
+                          <span style={{ fontSize: '0.55rem', padding: '0.1rem 0.4rem', borderRadius: 4, background: item.riskLevel === 'CRITICAL' ? 'rgba(239,68,68,0.15)' : item.riskLevel === 'HIGH' ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)', color: item.riskLevel === 'CRITICAL' ? '#ef4444' : item.riskLevel === 'HIGH' ? '#f59e0b' : '#3b82f6' }}>{item.riskLevel}</span>
+                        </div>
+                        <span style={{ fontSize: '0.6rem', padding: '0.15rem 0.4rem', borderRadius: 4, background: item.status === 'APPROVED' || item.status === 'PUBLISHED' ? 'rgba(16,185,129,0.15)' : item.status === 'REJECTED' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: item.status === 'APPROVED' || item.status === 'PUBLISHED' ? '#10b981' : item.status === 'REJECTED' ? '#ef4444' : '#f59e0b' }}>{item.status}</span>
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#64748b', marginBottom: '0.5rem' }}>By {item.submittedBy} • {new Date(item.submittedAt).toLocaleString()}</div>
+                      {/* Timeline steps */}
+                      <div style={{ display: 'flex', gap: '0.2rem', flexWrap: 'wrap' }}>
+                        {item.steps?.map((step: any, si: number) => (
+                          <div key={si} style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                            <div style={{ padding: '0.2rem 0.5rem', borderRadius: 4, background: step.status === 'COMPLETED' && step.decision === 'APPROVE' ? 'rgba(16,185,129,0.1)' : step.status === 'COMPLETED' && step.decision === 'REJECT' ? 'rgba(239,68,68,0.1)' : step.status === 'ACTIVE' ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.03)', fontSize: '0.55rem' }}>
+                              <span style={{ color: step.status === 'COMPLETED' && step.decision === 'APPROVE' ? '#10b981' : step.status === 'ACTIVE' ? '#3b82f6' : '#64748b' }}>{step.status === 'COMPLETED' ? (step.decision === 'APPROVE' ? '✅' : '❌') : step.status === 'ACTIVE' ? '🔵' : '⏳'} {step.requiredRole}</span>
+                              {step.approver && <span style={{ color: '#94a3b8', marginLeft: 4 }}>by {step.approver}</span>}
+                              {step.decisionAt && <span style={{ color: '#475569', marginLeft: 4 }}>{new Date(step.decisionAt).toLocaleTimeString()}</span>}
+                            </div>
+                            {si < item.steps.length - 1 && <span style={{ color: '#475569', fontSize: '0.6rem' }}>→</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )) : (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                      <p style={{ fontSize: '0.85rem' }}>No audit entries yet</p>
+                      <p style={{ fontSize: '0.7rem' }}>Submit and approve content to see the timeline</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Hash Chain Tab */}
+              {auditTab === 'chain' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {auditChainHistory.length > 0 ? auditChainHistory.map((block: any, i: number) => (
+                    <div key={i} style={{ padding: '0.6rem 1rem', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ minWidth: 24, height: 24, borderRadius: 4, background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', color: '#3b82f6', fontWeight: 700 }}>#{block.blockNumber}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.7rem', color: '#f1f5f9' }}><span style={{ fontWeight: 600 }}>{block.eventType}</span> <span style={{ color: '#64748b' }}>by</span> {block.actor}</div>
+                        <div style={{ fontSize: '0.55rem', color: '#475569' }}>{block.contentHash}</div>
+                      </div>
+                      <div style={{ fontSize: '0.55rem', color: '#475569' }}>{new Date(block.timestamp).toLocaleString()}</div>
+                    </div>
+                  )) : (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                      <p style={{ fontSize: '0.85rem' }}>No hash chain blocks yet</p>
+                      <p style={{ fontSize: '0.7rem' }}>Actions are recorded on the blockchain as they happen</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

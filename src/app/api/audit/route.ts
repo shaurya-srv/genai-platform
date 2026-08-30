@@ -1,64 +1,79 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AuditTracker, AuditEventType } from "@/lib/audit-tracker";
-import { exportAuditLogs, SIEMFormat } from "@/lib/siem-export";
+import { ApprovalChainService } from "@/lib/approval-chain";
+import { HashChain } from "@/lib/hashchain";
+import { NotificationService } from "@/lib/notifications";
+import { AuthService } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const action = searchParams.get("action") || "records";
+  const action = searchParams.get("action") || "timeline";
 
   switch (action) {
-    case "records": {
-      const minutes = parseInt(searchParams.get("minutes") || "60");
-      const records = AuditTracker.getInTimeWindow(minutes);
-      return NextResponse.json({ records, count: records.length });
+    case "timeline": {
+      // Full approval chain timeline for all requests
+      const requests = ApprovalChainService.getAllRequests();
+      const timeline = requests.map(r => ({
+        id: r.id,
+        title: r.title,
+        submittedBy: r.submittedByName,
+        submittedAt: r.submittedAt,
+        riskLevel: r.riskLevel,
+        status: r.status,
+        outputTypes: r.outputTypes,
+        deadline: r.deadline,
+        publishedAt: r.publishedAt,
+        steps: r.chain.map(s => ({
+          stepNumber: s.stepNumber,
+          requiredRole: s.requiredRoleName,
+          requiredLevel: s.requiredLevel,
+          approver: s.approverName || null,
+          decision: s.decision || null,
+          decisionAt: s.decisionAt || null,
+          comments: s.comments || null,
+          status: s.status,
+        })),
+      }));
+      return NextResponse.json(timeline);
     }
 
-    case "all": {
-      return NextResponse.json(AuditTracker.getAll());
+    case "chain_history": {
+      // Hash chain audit trail
+      const blocks = HashChain.getChain();
+      const formatted = blocks.map(b => ({
+        blockNumber: b.blockNumber,
+        eventType: b.eventType,
+        actor: b.actorName,
+        actorRole: b.actorRole,
+        timestamp: b.timestamp,
+        contentHash: b.contentHash.substring(0, 16) + "...",
+        metadata: b.metadata,
+      }));
+      return NextResponse.json(formatted);
     }
 
     case "stats": {
-      return NextResponse.json(AuditTracker.getStats());
-    }
-
-    case "high_risk": {
-      return NextResponse.json(AuditTracker.getHighRisk());
-    }
-
-    case "for_actor": {
-      const actor = searchParams.get("actor");
-      if (!actor) return NextResponse.json({ error: "actor required" }, { status: 400 });
-      return NextResponse.json(AuditTracker.getForActor(actor));
-    }
-
-    case "compliance_report": {
-      const startDate = parseInt(searchParams.get("startDate") || String(Date.now() - 7 * 24 * 60 * 60 * 1000));
-      const endDate = parseInt(searchParams.get("endDate") || String(Date.now()));
-      return NextResponse.json(AuditTracker.generateComplianceReport(startDate, endDate));
-    }
-
-    case "export": {
-      // SIEM export
-      const format = (searchParams.get("format") || "json") as SIEMFormat;
-      const startDate = searchParams.get("startDate") ? parseInt(searchParams.get("startDate")!) : undefined;
-      const endDate = searchParams.get("endDate") ? parseInt(searchParams.get("endDate")!) : undefined;
-      const eventTypes = searchParams.get("eventTypes")?.split(",") as AuditEventType[] | undefined;
-      const riskLevels = searchParams.get("riskLevels")?.split(",");
-      const actors = searchParams.get("actors")?.split(",");
-
-      const allRecords = AuditTracker.getAll();
-      const result = exportAuditLogs(allRecords, format, {
-        startDate, endDate, eventTypes, riskLevels, actors,
+      const chainStats = HashChain.getStats();
+      const approvalStats = ApprovalChainService.getStats();
+      const allUsers = AuthService.getAllUsers();
+      return NextResponse.json({
+        chain: chainStats,
+        approvals: approvalStats,
+        users: allUsers.length,
+        activeUsers: allUsers.filter(u => u.active).length,
       });
+    }
 
-      return new NextResponse(result.content, {
-        headers: {
-          'Content-Type': result.mimeType,
-          'Content-Disposition': `attachment; filename="${result.fileName}"`,
-          'X-SIEM-Format': result.format,
-          'X-Record-Count': String(result.recordCount),
-        },
-      });
+    case "notifications": {
+      const userId = searchParams.get("userId");
+      const notifs = userId
+        ? NotificationService.getForUser(userId)
+        : NotificationService.getAll();
+      return NextResponse.json(notifs.slice(0, 50));
+    }
+
+    case "verify_chain": {
+      const result = HashChain.verifyChain();
+      return NextResponse.json(result);
     }
 
     default:
